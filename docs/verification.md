@@ -196,3 +196,39 @@ Record milestone, date, changed files, acceptance IDs, exact command, runtime an
 DB versions, exit code, pass/fail/skip counts, intended red failure, green result,
 and remaining blockers. Preserve failure evidence; never replace it with expected
 output. Redact credentials. Log protocol version and decision IDs for M1 onward.
+
+
+## Seeded UI + Render preparation (2026-10-22)
+
+Backend checkpoint e7c6708 committed after secrets/generated-file scan. Before UI
+changes: unit 12/12, integration 7/7, typecheck exit 0, all executed.
+
+New TDD observations:
+- workspace test: intended red GET /api/home returned 404; green 1/1 after read
+  tools, seed and web routing. Independent SQL observer saw one action receipt.
+- browser test: intended red missing Approve routine button; green 1/1 after UI.
+  Real Edge browser, actual web/MCP processes and PostgreSQL, no protocol mocks.
+- hosting test: intended red configured hosted health returned 403; green 1/1
+  after PORT/bind, exact hosted origin and health adaptations.
+
+Full regression after hosting changes:
+- npm run test:unit: 12 passed, 0 failed/skipped.
+- npm run test:integration: 9 passed, 0 failed/skipped; MCP 2025-11-25 negotiated.
+- npm run test:e2e: 1 passed, 0 failed/skipped. Explicit approval, porch on,
+  locked door, approved unlock denial, replay (SQL action count remains 1),
+  refresh retrieves two decisions, evidence inspection, 390px no horizontal
+  overflow, MCP stopped and visible unavailable state; no page JS errors.
+- npm run typecheck: exit 0.
+- Visually inspected test-results/desktop.png (1440x1000 viewport, full page)
+  and mobile.png (390x844 viewport, full page). No overlap or truncated evidence;
+  mobile stacks controls and wraps IDs. Full accessibility review still pending.
+
+Changed files: public/index.html, public/style.css, public/app.js,
+src/contracts.ts, src/fixtures.ts, src/mcp-server.ts, src/web.ts,
+src/mcp-http.ts, src/mcp-client.ts, package.json, package-lock.json,
+tests/integration/workspace.test.ts, tests/integration/hosting.test.ts,
+tests/e2e/demo.test.ts, render.yaml, AGENTS.md, README.md and project docs.
+
+Render account menu verified aayushkumbharkar53@gmail.com. No Render resources
+created yet. Blueprint references generated secret and internal PostgreSQL URL;
+public MCP service uses bearer auth. Hosted workflow NOT RUN. Railway abandoned.

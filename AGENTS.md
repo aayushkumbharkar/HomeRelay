@@ -5,10 +5,10 @@
 Build HomeRelay for the Amazon Developer Hackathon, Alexa+ primary track. Read
 `docs/superpowers/specs/2026-10-22-homerelay-design.md`, `docs/architecture.md`,
 `docs/acceptance-tests.md`, and `docs/risks.md` before changing behavior.
-The user has authorized the first backend vertical slice (M1). Scope is the real
-MCP connection, explicit seeded-routine approval, deterministic simulated actions,
-PostgreSQL transactions, replay and restart verification. The frontend, natural
-language proposals, Bedrock and secondary features remain outside current scope.
+The user has authorized the verified backend, seeded-draft UI workflow, and
+Render deployment with a separate MCP service and managed PostgreSQL. Preserve
+the backend invariants. Natural-language proposals, editing, Bedrock and real
+devices remain deferred. Railway is abandoned. See docs/render-deployment.md.
 See `docs/superpowers/plans/2026-10-22-homerelay-vertical-slice.md` and the latest
 user instruction for milestone boundaries.
 

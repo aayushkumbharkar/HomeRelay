@@ -6,7 +6,7 @@ export async function callMcp(name: ToolName, input: unknown) {
   const args = definition.input.parse(input);
   const client = new Client({ name: 'homerelay-web', version: '0.1.0' });
   try {
-    const transport = new StreamableHTTPClientTransport(new URL(process.env.MCP_URL!), {
+    const transport = new StreamableHTTPClientTransport(new URL(process.env.MCP_URL ?? new URL('/mcp', process.env.MCP_BASE_URL!).href), {
       requestInit: { headers: { Authorization: `Bearer ${process.env.MCP_TOKEN}` } },
       fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.any([
         AbortSignal.timeout(5000), ...(init?.signal ? [init.signal] : [])

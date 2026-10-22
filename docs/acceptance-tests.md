@@ -1,3 +1,7 @@
+> Continuation 2026-10-22: seeded-draft UI implemented; local browser flow passed.
+> Render deployment in progress. See docs/render-deployment.md and verification.md.
+> Older deferred-scope/status notes below are historical.
+
 # Acceptance test specification
 
 Status: backend M1 executable tests now exist; see verification.md for actual

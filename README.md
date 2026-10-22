@@ -1,3 +1,25 @@
+# HomeRelay browser workflow
+
+Review a seeded draft, explicitly approve it, simulate arrival, challenge the
+unlock policy, replay, and inspect persisted decisions. The browser calls the
+backend, which invokes the official SDK MCP server; PostgreSQL stores evidence.
+
+After setup below, run `npm run build`, `npm run db:migrate`, `npm run db:seed`.
+In separate terminals run `npm run start:mcp` and `npm run start:web`.
+Open http://127.0.0.1:3000/. The fixture is 21 October 2026 at 19:00 Asia/Kolkata,
+with simulated sunset at 18:00. No real devices or live sunset integration.
+
+`npm run test:e2e` uses installed Microsoft Edge with Playwright and an isolated
+PostgreSQL schema. Configure the Chromium channel in tests/e2e/demo.test.ts on
+other operating systems. The demonstration database is never reset by tests.
+
+See [Render deployment](docs/render-deployment.md) and
+[executed verification](docs/verification.md). Natural-language parsing/editing,
+Bedrock, native Alexa+, real locks and multi-user identity remain unimplemented.
+Older backend-only setup notes below remain useful; deferred-UI status is historical.
+
+---
+
 # HomeRelay
 
 A policy-aware household assistant planned for the Amazon Developer Hackathon,

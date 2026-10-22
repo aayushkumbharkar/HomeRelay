@@ -55,6 +55,8 @@ export type PolicyInput = { event: HomeEvent; routine: Routine; approval: Approv
   currentRevision: boolean; sunset: Sunset | null };
 
 export const tools = {
+  get_home: { input: z.strictObject({}), output: z.strictObject({ devices: z.array(z.strictObject({deviceId: z.enum(["front-door","porch-light"]), state: z.enum(["off","on","locked"])})) }) },
+  list_decisions: { input: z.strictObject({}), output: z.array(DecisionSchema) },
   get_routine: { input: z.strictObject({ routineRevisionId: Id }), output: RoutineViewSchema },
   approve_routine: { input: ApproveInput, output: ApprovalSchema },
   simulate_event: { input: EventSchema, output: OutcomeSchema },

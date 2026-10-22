@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: homerelay-mcp
+    runtime: node
+    plan: free
+    region: oregon
+    branch: codex/m1-vertical-slice
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:production:mcp
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.22.0
+      - key: BIND_HOST
+        value: 0.0.0.0
+      - key: MCP_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: homerelay-db
+          property: connectionString
+  - type: web
+    name: homerelay-web
+    runtime: node
+    plan: free
+    region: oregon
+    branch: codex/m1-vertical-slice
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:production:web
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.22.0
+      - key: BIND_HOST
+        value: 0.0.0.0
+      - key: MCP_TOKEN
+        fromService:
+          type: web
+          name: homerelay-mcp
+          envVarKey: MCP_TOKEN
+      - key: MCP_BASE_URL
+        fromService:
+          type: web
+          name: homerelay-mcp
+          envVarKey: RENDER_EXTERNAL_URL
+databases:
+  - name: homerelay-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "18"
+    databaseName: homerelay
+    user: homerelay
+    ipAllowList: []

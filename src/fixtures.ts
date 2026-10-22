@@ -13,9 +13,11 @@ export function sunsetFor(date: string): Sunset | null {
 }
 export async function seed(pool: pg.Pool) {
   await transaction(pool, async db => {
+    for (const draft of [routine, { ...routine, revisionId: 'door-denial-r1', routineId: 'door-denial', sourceText: 'Request a simulated front-door unlock. Policy must deny this action.', actions: [{deviceId: 'front-door', action: 'unlock'}] }]) {
     await db.query('INSERT INTO routine_revisions (household_id, revision_id, routine_id, content, content_hash) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-      [household, routine.revisionId, routine.routineId, routine, hash(routine)]);
-    await db.query('INSERT INTO routine_heads VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [household, routine.routineId, routine.revisionId]);
+      [household, draft.revisionId, draft.routineId, draft, hash(draft)]);
+    await db.query('INSERT INTO routine_heads VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [household, draft.routineId, draft.revisionId]);
+    }
     await db.query("INSERT INTO devices VALUES ($1,'porch-light','off'),($1,'front-door','locked') ON CONFLICT DO NOTHING", [household]);
   });
 }

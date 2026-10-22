@@ -1,3 +1,7 @@
+> Continuation 2026-10-22: seeded-draft UI implemented; local browser flow passed.
+> Render deployment in progress. See docs/render-deployment.md and verification.md.
+> Older deferred-scope/status notes below are historical.
+
 # HomeRelay project specification
 
 Date: 2026-10-22, Asia/Calcutta. Status: adopted design; first backend slice

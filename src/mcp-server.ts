@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/server';
-import { openDb } from './db.js';
+import { openDb, household } from './db.js';
 import { listenMcp } from './mcp-http.js';
 import { z } from 'zod';
 import { tools, envelope, DomainError, type ToolName } from './contracts.js';
@@ -30,13 +30,15 @@ try {
         }
       });
     };
+    register('get_home', async () => ({devices: (await pool.query('SELECT device_id AS "deviceId", state FROM devices WHERE household_id=$1 ORDER BY device_id', [household])).rows}));
+    register('list_decisions', async () => (await pool.query("SELECT evidence FROM decisions WHERE household_id=$1 ORDER BY evidence->>'evaluatedAt' DESC, decision_id LIMIT 50", [household])).rows.map(row => row.evidence));
     register('get_routine', input => getRoutine(pool, tools.get_routine.input.parse(input).routineRevisionId));
     register('approve_routine', input => { const args = tools.approve_routine.input.parse(input); return approveRoutine(pool, args.routineRevisionId, args.contentHash); });
     register('simulate_event', input => processEvent(pool, tools.simulate_event.input.parse(input)));
     register('get_decision', input => getDecision(pool, tools.get_decision.input.parse(input).eventId));
     return server;
   },
-    process.env.MCP_TOKEN!, Number(process.env.MCP_PORT ?? 3001));
+    process.env.MCP_TOKEN!, Number(process.env.PORT ?? process.env.MCP_PORT ?? 3001), {host: process.env.BIND_HOST, publicOrigin: process.env.RENDER_EXTERNAL_URL, health: async () => { await pool.query('SELECT 1'); }});
   process.send?.({ port: listener.port });
   console.log(`HomeRelay simulated MCP listening on 127.0.0.1:${listener.port}`);
   const stop = async () => { await listener.close(); await pool.end(); };
