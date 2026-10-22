@@ -1,0 +1,198 @@
+# Inspection and verification ledger
+
+## M0: planning and environment inspection — 2026-10-22
+
+Changed files: `AGENTS.md`, `README.md`, `docs/architecture.md`,
+`docs/acceptance-tests.md`, `docs/risks.md`, `docs/sources.md`, this ledger,
+`docs/superpowers/specs/2026-10-22-homerelay-design.md`,
+`docs/superpowers/plans/2026-10-22-homerelay-vertical-slice.md`.
+
+Acceptance: inspect environment/repo/skills/official docs; write the requested
+planning artifacts; define the smallest real-MCP/PostgreSQL slice; implement no
+application code. Document checks do not prove any product behavior.
+
+| Command / inspection actually performed | Actual result |
+| --- | --- |
+| Get-Location | C:\Users\Aayush\HomeRelay |
+| git status --short (initial) | Only `?? .agents/`; preserved |
+| git branch --show-current | master |
+| git log -1 --oneline | Failed: branch has no commits |
+| git remote -v; git ls-files | No remote output; no tracked files |
+| Root listing and rg file inventory | `.git/` and `.agents/` only; no application manifest/tests/docs |
+| Ancestor AGENTS.md path checks | No files found at C:/, C:/Users/, or C:/Users/Aayush/ |
+| Installed skill directory inventory | Superpowers workflow/TDD skills and karpathy-guidelines found in C:/Users/Aayush/.agents/skills; local repo skills concern design |
+| Skill reads | using-superpowers + Codex reference, brainstorming, writing-plans, test-driven-development + writing-good-tests, karpathy-guidelines read; frontend skills not loaded |
+| node --version; npm --version | v20.20.2; 10.8.2 |
+| python --version | Python 3.10.9; not selected for app |
+| docker --version | 29.2.0, build 0b9d198 |
+| docker info --format '{{.ServerVersion}}' | Failed: dockerDesktopLinuxEngine named pipe absent |
+| psql --version | PostgreSQL client 18.4 |
+| pg_isready | No response at default :5432 |
+| Get-Service *postgres* | Failed to open Service Control Manager; service installation/status undetermined |
+| Test-Path Env:DATABASE_URL; Test-Path Env:AWS_PROFILE | False; False. No secret values read or printed |
+| Get-Command aws | AWS CLI executable found; authentication/model access NOT TESTED |
+| Initial sandbox npm metadata lookup | Did not return; interrupted. No package installed |
+| Bounded npm view with network access: server version engines | 2.3.1, node >=20 |
+| Bounded npm view with network access: client version engines | 2.3.1, node >=20 |
+| Bounded npm view with network access: node adapter version engines | 2.1.1, node >=20 |
+| Official-source review | See sources.md; failed guessed SDK transports URL replaced with linked official HTTP page |
+| Inline Python Markdown check over AGENTS.md, README.md and docs/**/*.md | PASS: 9 files; all relative Markdown links resolve, code fences balanced, no trailing whitespace. This checks documentation only |
+| rg -n 'TBD\|TODO\|fill in details\|implement later' AGENTS.md README.md docs | No matches (rg exit 1 means no matches; the combined shell command consequently returned 1, not a documentation-check failure) |
+| Final git status --short | Untracked .agents/ unchanged; new AGENTS.md, README.md, docs/. No application files added |
+| Manual specification/plan consistency review | AC-01–18 mapped to milestones; approval, replay, transaction, simulation and evidence invariants covered; future tests explicitly NOT RUN |
+
+## M0 product test results (historical; superseded by M1 below)
+
+| Milestone | Actual result | Remaining gate |
+| --- | --- | --- |
+| M1 real MCP and durable decisions | NOT RUN: no application or executable tests | Working PostgreSQL, runtime/dependency installation, implementation request |
+| M2 proposals, revisions, unlock denial | NOT RUN: not implemented | M1 and proposal/revision implementation |
+| M3 browser demo and judging evidence | NOT RUN: not implemented | M1/M2, browser implementation and reproducible clean setup |
+
+No unit/integration/browser product tests were executed. No MCP connection or
+durability claim has been verified. No model call or real-device integration exists.
+
+The preceding paragraph describes M0 only. Current backend evidence follows.
+
+## M1 implementation — 2026-10-22
+
+Scope: user's staged implementation request. Implement backend only; initial HTML
+page from the earlier plan is deferred. No frontend skills were loaded. Use
+Superpowers executing-plans, TDD, systematic-debugging and verification guidance.
+Read worktree guidance: this repository had no commit/base ref, so a linked
+worktree could not carry the existing untracked specification. Created branch
+`codex/m1-vertical-slice` in place. No commits, merges, pushes or PRs were made.
+
+### Stage 1: environment and dependencies
+
+Acceptance: usable isolated PostgreSQL and compatible installed SDK/runtime.
+
+- Sandbox Docker access failed; the same inspection outside the sandbox showed
+  Docker engine 29.2.0 working. Host PostgreSQL 18 service was running and 5432
+  accepted connections. PostgreSQL 17 was installed but stopped. The Docker
+  Windows service being stopped did not mean the Desktop Linux engine was down.
+- Chose dedicated Compose PostgreSQL rather than using unknown host credentials.
+  Initial `docker compose up -d --wait` failed on port 55432. `netsh interface ipv4
+  show excludedportrange protocol=tcp` showed reserved range 55425–55524. Changing
+  only the published loopback port to 15432 yielded a healthy container.
+- `docker compose exec -T db psql -U homerelay -d homerelay -c 'SELECT version();'`
+  returned PostgreSQL 18.6 (Debian). Created separate `homerelay_test` DB.
+- Generated credentials only in ignored `.env`; no credential values were printed.
+  `git check-ignore .env node_modules dist` confirmed all three are ignored.
+- `npm view` verified server/client 2.3.1 (Node >=20), node adapter 2.1.1 with
+  server ^2.3.0 peer. Installed exact versions and locked dependencies. Installed
+  project Node 24.22.0, TypeScript 7.0.2, pg 8.23.1, Zod 4.6.7 and necessary types.
+  npm install reported zero vulnerabilities. System Node 20.20.2/npm 10.8.2 unchanged.
+- `npm ls --depth=0` exited 0 and listed expected versions; node's runtime installer
+  left `node-bin-setup@1.1.4` marked extraneous. It is installer support, not an
+  application dependency or an MCP implementation.
+- Pinned the tested postgres image by digest in compose.yaml. Re-ran
+  `docker compose up -d --wait`: exit 0, healthy, existing named volume retained.
+
+Stage 1 changed files: `.gitignore`, `.env.example`, `compose.yaml`, `package.json`,
+`package-lock.json`, `tsconfig.json`; generated local `.env` is ignored.
+Remaining environment blockers: none for this slice outside the restricted
+sandbox. Database shutdown is not required when Codex tests finish; the dedicated
+development container is left running. No unrelated host service was modified.
+
+### Stage 2: real MCP proof gate
+
+Files: `src/mcp-http.ts`, `tests/helpers/processes.ts`,
+`tests/helpers/probe-server.ts`, `tests/integration/mcp.test.ts`.
+
+Acceptance: separate server process; real HTTP initialization/tool discovery;
+structured response; invalid arguments rejected; official SDK owns protocol.
+
+`npm run test:mcp` first exited 1: initialization succeeded but tools/list returned
+[] rather than simulation_info. After registering the validated probe tool, the
+same command exited 0: **1 test passed, 0 failed/skipped**. It negotiated
+**MCP 2025-11-25**, received `{label: porch, simulated: true}` as structuredContent,
+and asserted isError=true for a numeric label. Only after this gate passed did
+policy/persistence implementation begin. The proof tool is test-only, not exposed
+by the application MCP service. Stage 2 blockers: none.
+
+### Stage 3: transactional backend slice
+
+New application files:
+
+- `src/contracts.ts`, `src/policy.ts`, `src/db.ts`, `src/fixtures.ts`
+- `src/routines.ts`, `src/decisions.ts`, `src/simulated-action.ts`
+- `src/mcp-server.ts`, `src/mcp-client.ts`, `src/web.ts`
+- `db/001-core.sql`, `scripts/migrate.ts`, `scripts/seed.ts`
+
+New verification files:
+
+- `tests/unit/policy.test.ts`
+- `tests/helpers/database.ts`, `tests/helpers/fixtures.ts`
+- `tests/integration/decision.test.ts`, `tests/integration/denial.test.ts`
+- `tests/integration/replay.test.ts`, `tests/integration/failures.test.ts`
+- `tests/integration/restart.test.ts`, `tests/integration/validation.test.ts`
+
+Updated documentation: `AGENTS.md`, `README.md`, `docs/architecture.md`,
+`docs/acceptance-tests.md`, `docs/risks.md`, `docs/verification.md`,
+`docs/superpowers/specs/2026-10-22-homerelay-design.md`,
+`docs/superpowers/plans/2026-10-22-homerelay-vertical-slice.md`.
+Pre-existing `.agents/` and `docs/sources.md` were not changed in this implementation.
+
+| Execution | Actual outcome |
+| --- | --- |
+| Initial npm run test:unit with evaluator stub | 11 expected verdict failures, 1 schema test passed; exit 1 |
+| npm run test:unit after evaluator | 12 passed; exit 0 |
+| Build + decision.test.js with retrieval stub | Failed assert.ok(draft); exit 1 |
+| Build + decision.test.js after retrieval/approval | Failed assert.ok(denied) at missing event processing; exit 1 |
+| Build + decision.test.js after transaction | 1 passed; exit 0 |
+| Initial npm run test:integration with plain event INSERT | 4 passed, replay failed with events_pkey duplicate; exit 1 |
+| npm run test:integration after ON CONFLICT/replay handling | 5 passed; exit 0 |
+| Initial backend restart test with route stub | Expected 200, received 503; exit 1 |
+| Initial validation test before domain tool registration | Method not found; exit 1 |
+| Integration run after backend/client implementation | 6 passed; Host-header test got 401 instead of 403; exit 1 |
+| Focused validation after correcting test HTTP client | 1 passed; exit 0. fetch normalized Host, so node:http now sends the actual forged header; production guard unchanged |
+| npm run db:migrate | Exit 0; migration 1 applied/verified on dedicated development DB |
+| npm run db:seed | Exit 0; seeded simulated devices and draft, no automatic approval |
+| Final npm run test:unit | **12 passed, 0 failed, 0 skipped; exit 0** |
+| Final npm run test:integration | **7 passed, 0 failed, 0 skipped; exit 0**; negotiated MCP 2025-11-25 |
+| Final npm run typecheck | **Exit 0**, no TypeScript errors |
+
+Rollback and unlock integration tests passed when first added because the
+transaction/policy already implemented those behaviors; no separate red cycle is
+claimed for them. No test results were inferred from expected outputs.
+
+### Acceptance evidence and limits
+
+- AC-01: official SDK initializes/discovers/calls across an OS process boundary;
+  real backend routes call a separately running MCP server with no DB URL in the
+  web child process's environment.
+- AC-02/03: unapproved event is stored as denial; explicit approval does not
+  execute; a fresh matching event commits one receipt and changes porch state.
+- AC-04/05: sequential normalized replay and ten concurrent duplicate requests,
+  both DB-level and through web/MCP, return one decision and one receipt per event;
+  changed payload returns conflict. PostgreSQL uniqueness enforces the event key.
+- AC-06/08: stop/restart both web and MCP without reseeding; GET retrieves exactly
+  the previous evidence, replay creates no receipt; MCP down returns 503 without
+  writing an action, then retry after recovery succeeds.
+- AC-07: weekday/timezone, before/equal sunset, unavailable sunset and trigger
+  mismatch rules covered by literal unit cases.
+- AC-09: SQL trigger rejecting action INSERT rolls back event/decision/device
+  changes; removing the trigger allows retry. Actual mid-request DB-service outage
+  was not separately injected.
+- AC-10: nonexistent ID has no invented history; evidence survives routine-head
+  replacement and process restart, with original approval/policy/action snapshots.
+- AC-15: forged approval and malformed time rejected through SDK; invalid action
+  pair rejected by schema; token, Origin, Host, CSRF and body-size boundaries tested.
+- Unlock prototype guarantee: approved unlock fixture produces durable denial,
+  zero receipts and locked state; direct DB unlock update violates a constraint.
+  This does not implement M2 proposal creation or editing.
+
+Remaining scope/risks: full frontend and browser tests NOT RUN; M2 proposals and
+M3 demo NOT IMPLEMENTED; database-container restart with a saved decision NOT
+TESTED; Bedrock/native Alexa+/real devices NOT INTEGRATED. Local single-operator
+security only. No full clean-machine setup or publication was attempted. Changes
+are uncommitted; no remote is configured. No remaining blocker to the requested
+backend definition of done was observed.
+
+## Future result entry format
+
+Record milestone, date, changed files, acceptance IDs, exact command, runtime and
+DB versions, exit code, pass/fail/skip counts, intended red failure, green result,
+and remaining blockers. Preserve failure evidence; never replace it with expected
+output. Redact credentials. Log protocol version and decision IDs for M1 onward.

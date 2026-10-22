@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { testDatabase } from '../helpers/database.js';
+import { processEvent, getDecision } from '../../src/decisions.js';
+import { approveRoutine, getRoutine } from '../../src/routines.js';
+import { seed } from '../../src/fixtures.js';
+import { migrate } from '../../src/db.js';
+import { event } from '../helpers/fixtures.js';
+
+test('approval is explicit; decision/action/device commit together; seed preserves history', async t => {
+  const db = await testDatabase(); t.after(() => db.close());
+  const draft = await getRoutine(db.pool, 'r1'); assert.ok(draft); assert.equal(draft.approval, null);
+  const denied = await processEvent(db.pool, { ...event, eventId: 'before-approval' }); assert.ok(denied);
+  assert.equal(denied.decision.actions[0].reasonCode, 'APPROVAL_REQUIRED');
+  assert.equal((await db.pool.query('SELECT * FROM actions')).rowCount, 0);
+  await assert.rejects(approveRoutine(db.pool, 'r1', '0'.repeat(64)), /STALE_REVISION/);
+  const approval = await approveRoutine(db.pool, 'r1', draft.contentHash); assert.ok(approval);
+  assert.equal((await db.pool.query("SELECT state FROM devices WHERE device_id='porch-light'")).rows[0].state, 'off');
+  const result = await processEvent(db.pool, event); assert.ok(result);
+  assert.equal(result.replayed, false);
+  assert.equal(result.decision.actions[0].executionStatus, 'executed');
+  assert.equal(result.decision.actions[0].reasonCode, 'ARRIVAL_RULE_MATCHED');
+  assert.deepEqual(result.decision.approvalSnapshot, approval);
+  assert.equal((await db.pool.query('SELECT * FROM actions')).rowCount, 1);
+  assert.equal((await db.pool.query("SELECT state FROM devices WHERE device_id='porch-light'")).rows[0].state, 'on');
+  assert.equal((await db.pool.query("SELECT state FROM devices WHERE device_id='front-door'")).rows[0].state, 'locked');
+  await migrate(db.pool); await seed(db.pool);
+  assert.equal((await db.pool.query("SELECT state FROM devices WHERE device_id='porch-light'")).rows[0].state, 'on');
+  assert.deepEqual(await getDecision(db.pool, event.eventId), result.decision);
+  assert.equal(await getDecision(db.pool, 'missing'), null);
+  assert.equal((await db.pool.query('SELECT * FROM actions')).rowCount, 1);
+});

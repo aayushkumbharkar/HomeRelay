@@ -1,0 +1,19 @@
+name: homerelay
+services:
+  db:
+    image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+    environment:
+      POSTGRES_USER: homerelay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: homerelay
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - homerelay-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homerelay -d homerelay"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  homerelay-data:
