@@ -1,5 +1,8 @@
 const $ = id => document.getElementById(id);
 let draft, history = [], csrf, busy = false, available = false, pendingEvent = null, currentDecision = null;
+let run = null, selectedIncident = null;
+const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], dayOrder = [1,2,3,4,5,6,0];
+const fixtureEvent = '2026-10-24T19:00:00+05:30';
 const reasonText = {
  ARRIVAL_RULE_MATCHED: 'The approved arrival matched the weekday and after-sunset rules.',
  DOOR_UNLOCK_FORBIDDEN: 'Door unlocking is always forbidden. Approval cannot override this rule.',
@@ -27,6 +30,9 @@ function controls() {
  $('refresh').disabled = busy;
  $('why').disabled = busy || !currentDecision;
  $('confirm-unlock').disabled = busy;
+ $('run-preflight').disabled = busy || !available || !draft || !candidateDays().length;
+ $('retrieve-run').disabled = busy || !available || !run;
+ $('record').disabled = busy || !available || !draft?.approval;
 }
 function node(tag, text) { const element=document.createElement(tag);element.textContent=text;return element; }
 function detail(decision) {
@@ -59,7 +65,7 @@ function timeline() {
  for(const decision of history) {
   const button=document.createElement('button');
   button.append(node('strong',decision.actions.some(a=>a.executionStatus==='executed')?'Executed · porch light on':'Denied · no action executed'),node('span',`Simulated ${decision.eventSnapshot.kind} · revision ${decision.routineRevisionId}`),node('span',new Date(decision.evaluatedAt).toLocaleString()));
-  button.addEventListener('click',()=>run(async()=>{const saved=await api('/api/decisions/'+encodeURIComponent(decision.eventId));detail(saved);document.querySelectorAll('#history button').forEach(b=>b.classList.remove('selected'));button.classList.add('selected');notice('Retrieved the original decision from PostgreSQL through MCP.');}));
+  button.addEventListener('click',()=>work(async()=>{const incident=await api('/api/incidents/'+encodeURIComponent(decision.eventId));selectedIncident=decision.eventId;detail(incident.decision);showIncident(incident);document.querySelectorAll('#history button').forEach(b=>b.classList.remove('selected'));button.classList.add('selected');notice('Reconstructed the original decision from PostgreSQL through MCP. Shown as the incident above.');}));
   $('history').append(button);
  }
 }
@@ -73,23 +79,109 @@ async function refresh() {
  $('approval-state').textContent=draft.approval?'Approved':'Awaiting approval';
  for(const device of home.devices) {const value=device.state[0].toUpperCase()+device.state.slice(1);$(device.deviceId==='porch-light'?'porch-state':'door-state').textContent=value;}
  $('lamp').classList.toggle('on',home.devices.some(d=>d.deviceId==='porch-light'&&d.state==='on'));
- timeline();controls();
+ timeline();candidateView();
+ const target=selectedIncident??history.find(d=>d.routineRevisionId===draft.routine.revisionId&&d.actions.some(a=>a.reasonCode==='OUTSIDE_WEEKDAYS'))?.eventId;
+ if(target)showIncident(await api('/api/incidents/'+encodeURIComponent(target)));else showFixture();
+ controls();
 }
-async function run(action) {
+async function work(action) {
  if(busy)return;busy=true;controls();notice('Working through MCP. Waiting for a confirmed result…');
  try{await action();}catch(error){available=false;$('connection').textContent='○ Connection needs attention';notice(error.message==='UNAVAILABLE'?'Service unavailable or waking from sleep. Wait about a minute, then Refresh evidence. Displayed state may be stale; no success is assumed.':`Request failed (${error.message}). Refresh evidence before retrying.`,true);}finally{busy=false;controls();}
 }
 function eventFor(revision) {return {eventId:crypto.randomUUID(),routineRevisionId:revision,kind:'arrival',occurredAt:'2026-10-21T19:00:00+05:30',source:'simulated'};}
-$('approve').addEventListener('click',()=>run(async()=>{await api('/api/approve',{routineRevisionId:draft.routine.revisionId,contentHash:draft.contentHash});await refresh();notice('Approved. Your routine is ready; no device action has run.');}));
-$('simulate').addEventListener('click',()=>run(async()=>{pendingEvent??=eventFor(draft.routine.revisionId);const outcome=await api('/api/events',pendingEvent);pendingEvent=null;await refresh();scenario(outcome);notice(outcome.replayed?'Retrieved saved result. No duplicate action.':outcome.decision.actions.some(a=>a.executionStatus==='executed')?'Executed. The simulated porch light is on; the front door remains locked.':'Denied. Inspect the saved policy reason below.');}));
-$('replay').addEventListener('click',()=>run(async()=>{const previous=history.find(d=>d.routineRevisionId==='r1');const outcome=await api('/api/events',previous.eventSnapshot);await refresh();scenario(outcome);notice(outcome.replayed?'Replay verified. No duplicate action. The original decision and receipt were returned.':'Result retrieved. Inspect the saved evidence.');}));
-$('why').addEventListener('click',()=>run(async()=>{const saved=await api('/api/decisions/'+encodeURIComponent(currentDecision.eventId));detail(saved);$('evidence').scrollIntoView({behavior:'auto',block:'center'});notice('Explanation retrieved from the original persisted decision.');}));
-$('refresh').addEventListener('click',()=>run(async()=>{await refresh();notice('Refreshed device state and persisted evidence through MCP.');}));
+$('approve').addEventListener('click',()=>work(async()=>{await api('/api/approve',{routineRevisionId:draft.routine.revisionId,contentHash:draft.contentHash});await refresh();notice('Approved. Your routine is ready; no device action has run.');}));
+$('simulate').addEventListener('click',()=>work(async()=>{pendingEvent??=eventFor(draft.routine.revisionId);const outcome=await api('/api/events',pendingEvent);pendingEvent=null;await refresh();scenario(outcome);notice(outcome.replayed?'Retrieved saved result. No duplicate action.':outcome.decision.actions.some(a=>a.executionStatus==='executed')?'Executed. The simulated porch light is on; the front door remains locked.':'Denied. Inspect the saved policy reason below.');}));
+$('replay').addEventListener('click',()=>work(async()=>{const previous=history.find(d=>d.routineRevisionId==='r1');const outcome=await api('/api/events',previous.eventSnapshot);await refresh();scenario(outcome);notice(outcome.replayed?'Replay verified. No duplicate action. The original decision and receipt were returned.':'Result retrieved. Inspect the saved evidence.');}));
+$('why').addEventListener('click',()=>work(async()=>{const saved=await api('/api/decisions/'+encodeURIComponent(currentDecision.eventId));detail(saved);$('evidence').scrollIntoView({behavior:'auto',block:'center'});notice('Explanation retrieved from the original persisted decision.');}));
+$('refresh').addEventListener('click',()=>work(async()=>{await refresh();notice('Refreshed device state and persisted evidence through MCP.');}));
 $('unlock').addEventListener('click',()=>$('unlock-dialog').showModal());
 $('cancel-unlock').addEventListener('click',()=>$('unlock-dialog').close());
-$('confirm-unlock').addEventListener('click',()=>run(async()=>{
+$('confirm-unlock').addEventListener('click',()=>work(async()=>{
  const request=await api('/api/routines/door-denial-r1');
  await api('/api/approve',{routineRevisionId:request.routine.revisionId,contentHash:request.contentHash});
  const outcome=await api('/api/events',eventFor(request.routine.revisionId));$('unlock-dialog').close();await refresh();scenario(outcome);notice('Denied. Door unlocking is forbidden, even with approval. The door remains locked.');
 }));
-run(async()=>{await refresh();notice(draft.approval?'Your approved routine is ready. All devices and events are simulated.':'Review the draft and safety boundaries, then explicitly approve your routine.');});
+work(async()=>{await refresh();notice(draft.approval?'Your approved routine is ready. All devices and events are simulated.':'Review the draft and safety boundaries, then explicitly approve your routine.');});
+const label=days=>[...days].sort((a,b)=>dayOrder.indexOf(a)-dayOrder.indexOf(b)).map(d=>dayNames[d]).join(', ');
+const candidateDays=()=>[...document.querySelectorAll('#day-picker input:checked')].map(i=>Number(i.value));
+function chip(text,cls){const span=node('span',text);span.className=cls;return span;}
+function cell(...children){const td=document.createElement('td');td.append(...children);return td;}
+function candidateView(){
+ const base=draft.routine.weekdays;
+ if(!$('day-picker').children.length) for(const d of dayOrder){
+  const box=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.value=String(d);
+  input.checked=base.includes(d)||d===6;input.addEventListener('change',()=>{candidateView();controls();});box.append(input,node('span',dayNames[d]));$('day-picker').append(box);
+ }
+ const next=candidateDays();
+ for(const box of $('day-picker').children){const d=Number(box.firstChild.value);box.classList.toggle('added',next.includes(d)&&!base.includes(d));box.classList.toggle('removed',!next.includes(d)&&base.includes(d));}
+ $('baseline-days').textContent=label(base);$('baseline-label').textContent='· '+label(base);
+ $('candidate-days').replaceChildren();
+ for(const d of [...new Set([...base,...next])].sort((a,b)=>dayOrder.indexOf(a)-dayOrder.indexOf(b))) $('candidate-days').append(chip((next.includes(d)&&!base.includes(d)?'+ ':!next.includes(d)?'− ':'')+dayNames[d],!next.includes(d)?'day removed':!base.includes(d)?'day added':'day'));
+ if($('add-unlock').checked)$('candidate-days').append(chip('+ front-door/unlock','day removed'));
+ if(!run) placeholders();
+}
+function placeholders(){
+ const titles=['Approved weekday arrival after sunset','Saturday arrival after sunset','Arrival before sunset','Missing sunset evidence','Unapproved routine','Prohibited door unlock'];
+ $('cases').replaceChildren(...titles.map(t=>{const tr=document.createElement('tr');tr.append(cell(node('strong',t)),cell(node('span','—')),cell(node('span','—')),cell(node('span','Not run')),cell(node('span','—')));return tr;}));
+}
+function verdicts(side){return side.verdicts.map(v=>{const div=document.createElement('div');div.className='verdict '+v.verdict;div.append(node('b',v.verdict.toUpperCase()),node('code',v.reasonCode));if(side.verdicts.length>1)div.append(node('small',v.deviceId+'/'+v.action));return div;});}
+function explained(c){const span=node('span',c.explanation+' ');span.append(node('small',c.approvalBasis==='none'?'No approval':'Simulated approval · test only'));return span;}
+const changeText={unchanged:'No change',newly_allowed:'Now allowed',newly_denied:'Now denied · regression',reason_changed:'Reason changed'};
+function showRun(result,devicesHeld){
+ run=result;
+ $('cases').replaceChildren(...result.cases.map(c=>{
+  const tr=document.createElement('tr');tr.dataset.scenario=c.scenarioId;tr.classList.toggle('changed',c.changed);tr.classList.toggle('violation',c.safetyViolation);
+  tr.append(cell(node('strong',c.title),explained(c)),
+   cell(...verdicts(c.baseline)),cell(...verdicts(c.candidate)),cell(chip(changeText[c.change],'change '+c.change)),
+   cell(chip(c.safetyViolation?'VIOLATED':c.mustDeny?'Must deny · held':'—',c.safetyViolation?'risk bad':c.mustDeny?'risk ok':'risk')));
+  return tr;}));
+ const s=result.summary;
+ $('preflight-summary').replaceChildren(chip(s.verdict==='pass'?'PASS':'FAIL','pill '+s.verdict),node('span',` ${s.changed} of ${s.total} decisions changed · ${s.safetyViolations} safety violations · `+(s.findings.length?s.findings.join(', '):'eligible for explicit approval; not activated')));
+ for(const li of document.querySelectorAll('#invariant-list li')){
+  const id=li.dataset.case;let held;
+  if(id==='side-effects')held=devicesHeld;else{const c=result.cases.find(x=>x.scenarioId===id);held=!!c&&!c.safetyViolation&&c.candidate.outcome==='deny';}
+  li.className=held===true?'held':held===false?'broken':'';li.title=held===true?'Held in this run':held===false?'Not held in this run':'Not observed for a retrieved run';
+ }
+ $('run-id').textContent=`Run ${result.runId} · saved ${new Date(result.createdAt).toLocaleString()} · ${result.policyVersion} · candidate not saved or activated`;
+}
+function showFixture(){
+ $('incident-basis').textContent='Scenario fixture · not recorded';$('incident-basis').className='badge fixture';
+ $('incident-heading').textContent='Saturday arrival after sunset';
+ $('incident').replaceChildren(node('p','No saved decision in this household explains a Saturday arrival. This is a labelled scenario fixture, not an event that occurred: simulated arrival Saturday 24 October 2026, 19:00 Asia/Kolkata, sunset fixture 17:58.'),
+  node('p','Root cause: unverified until the arrival is recorded as a simulated event through MCP.'),
+  node('p',draft.approval?'Recording stores a real policy decision in PostgreSQL. It cannot unlock the door.':'Approve the routine below (05) first, so the recorded decision tests the schedule rather than the missing approval.'));
+ $('record').hidden=false;
+}
+function showIncident(incident){
+ const d=incident.decision;$('record').hidden=true;
+ $('incident-basis').textContent='Recorded · PostgreSQL';$('incident-basis').className='badge recorded';
+ const when=new Date(d.eventSnapshot.occurredAt).toLocaleString('en-GB',{timeZone:d.routineSnapshot.timezone,weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+ const executed=incident.actions.some(a=>a.executionStatus==='executed');
+ $('incident-heading').textContent=`${when} ${d.eventSnapshot.kind}: ${executed?'action executed':'no action executed'}`;
+ const parts=[];
+ for(const a of incident.actions){
+  const failed=a.checks.find(c=>c.status==='failed');
+  const cause=document.createElement('div');cause.className='cause';
+  cause.append(node('span',failed?'VERIFIED ROOT CAUSE · stored reason code':'NO FAILED CHECK · every rule passed'),node('strong',failed?failed.check+' — failed':'Arrival rule matched'),node('code',a.reasonCode),node('p',failed?failed.evidence:`Receipt ${a.actionId}`));
+  const list=document.createElement('ol');list.className='checks';
+  for(const c of a.checks){const li=document.createElement('li');li.className=c.status;li.append(node('b',c.status==='passed'?'✓':c.status==='failed'?'✕':'·'),node('span',c.check),node('small',c.status==='not_reached'?'not reached':c.evidence));list.append(li);}
+  parts.push(cause,list,node('p',`${a.deviceId}/${a.action}: ${a.executionStatus==='executed'?'executed · receipt '+a.actionId:'not executed · no receipt'}`));
+ }
+ parts.push(node('p',`Decision ${d.decisionId.slice(0,8)} · revision ${d.routineRevisionId} (${d.currentRevision?'current':'superseded'} when evaluated) · ${d.approvalSnapshot?'approved by '+d.approvalSnapshot.actor:'no approval recorded'} · ${d.policyVersion}`));
+ $('incident').replaceChildren(...parts);
+}
+$('add-unlock').addEventListener('change',()=>candidateView());
+$('run-preflight').addEventListener('click',()=>work(async()=>{
+ const before=await api('/api/home');
+ const candidate={weekdays:candidateDays()};
+ if($('add-unlock').checked)candidate.actions=[...draft.routine.actions.filter(a=>a.deviceId!=='front-door'),{deviceId:'front-door',action:'unlock'}];
+ const result=await api('/api/preflight',{routineRevisionId:draft.routine.revisionId,candidate});
+ const after=await api('/api/home');const same=JSON.stringify(before.devices)===JSON.stringify(after.devices);
+ showRun(result,same);
+ notice(`Preflight ${result.summary.verdict==='pass'?'passed':'failed'}: evaluated by the MCP server and saved to PostgreSQL. No routine was saved or approved; device state ${same?'unchanged':'changed during the run (shared household)'}.`);
+}));
+$('retrieve-run').addEventListener('click',()=>work(async()=>{const saved=await api('/api/preflight/'+encodeURIComponent(run.runId));showRun(saved,null);notice(`Retrieved saved run ${saved.runId} from PostgreSQL through MCP.`);}));
+$('record').addEventListener('click',()=>work(async()=>{
+ const outcome=await api('/api/events',{eventId:crypto.randomUUID(),routineRevisionId:draft.routine.revisionId,kind:'arrival',occurredAt:fixtureEvent,source:'simulated'});
+ selectedIncident=outcome.decision.eventId;await refresh();notice('Recorded a simulated Saturday arrival. The incident above is reconstructed from the stored decision.');
+}));

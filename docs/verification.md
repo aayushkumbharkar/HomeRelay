@@ -270,3 +270,50 @@ Final local regression after redesign:
 
 New deployment/restart verification of this redesigned commit remains pending
 until recorded below. Public video and Devpost final submission are not yet done.
+
+## Time Machine milestone — 2026-10-23
+
+Scope: incident reconstruction, side-effect-free counterfactual preflight, three new
+MCP tools, migration 002 (`preflight_runs`), workbench UI. No Render config change.
+Baseline before changes: unit 12/12, integration 9/9 (executed).
+
+Changed files: src/contracts.ts, src/policy.ts, src/decisions.ts, src/fixtures.ts,
+src/db.ts, src/mcp-server.ts, src/web.ts, src/preflight.ts (new), src/incident.ts
+(new), db/002-preflight-runs.sql (new), .gitattributes (new), scripts/migrate.ts,
+scripts/hosted-smoke.mjs, public/index.html, public/app.js, public/style.css,
+tests/helpers/database.ts, tests/unit/preflight.test.ts (new),
+tests/integration/migration.test.ts (new), tests/integration/preflight.test.ts (new),
+tests/e2e/timemachine.test.ts (new), tests/e2e/demo.test.ts, README.md and docs.
+
+TDD observations:
+- unit/preflight.test.ts: intended red with stub modules: 7 failed (stub output
+  rejected by PreflightSuiteSchema/IncidentSchema; CHECK_ORDER precedence assertion
+  failed). Green: 20/20 unit after implementation.
+- integration/migration.test.ts: intended red "MCP started on an unmigrated schema"
+  (old v1-only startup check). An earlier red attempt hung because the leaked child
+  process was not stopped; the test was fixed to stop it, then re-observed red.
+- integration/preflight.test.ts: intended red "run_preflight has typed schemas"
+  (tool absent). Both green after migration, tools and routes.
+- e2e/timemachine.test.ts was written after the UI markup; no red was observed for
+  it. First run failed on an ambiguous test locator and the existing demo e2e caught
+  a real 390px overflow caused by a `.safety` class collision; renamed to `.risk`.
+- Saturday sunset fixture 2026-10-24 17:58 added explicitly. Existing Mon–Fri
+  routines are unaffected because the weekday check precedes the sunset check.
+
+Final local regression (all executed, Node 24.22.0, PostgreSQL 18 Docker):
+- npm run test:unit — 20 pass, 0 fail/skip.
+- npm run test:integration — 11 pass, 0 fail/skip; MCP 2025-11-25 negotiated.
+- npm run test:e2e — 2 pass, 0 fail/skip (real Edge, web+MCP processes, PostgreSQL).
+- npm run typecheck — exit 0.  git diff --check — exit 0.
+- Local dev DB migrated with npm run db:migrate (v1 -> v2); MCP then started.
+- Inspected test-results/timemachine-fixture.png, timemachine-pass.png (1440x1000:
+  incident, candidate, invariants, run button and all six result rows in first
+  viewport), timemachine-desktop.png and timemachine-mobile.png (390px, no overflow).
+
+Known limitations: fixed six-case suite on dated fixtures; preflight `currentRevision`
+is simulated as true; a passing run cannot be activated (no revision creation);
+preflight runs are public and unthrottled in the shared demo; the UI's "device state
+unchanged" is an observation of before/after reads in a shared household, while the
+authoritative no-side-effect proof is the integration test's table comparison.
+
+Deployment: NOT RUN at time of writing; see the next entry.

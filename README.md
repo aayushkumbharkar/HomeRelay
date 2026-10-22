@@ -1,17 +1,51 @@
-# HomeRelay
+# HomeRelay Time Machine
 
-**A light on. A door still locked.**
+**Replay the incident. Test the fix. Block regressions.**
 
-An assistant that acts within your rules and keeps proof of every decision.
-HomeRelay is a simulated household experience for the Alexa+ primary track of
-the Amazon Developer Hackathon. It uses a real self-hosted MCP server, deterministic
-policy, and PostgreSQL. No native Alexa+, Ring, physical lock or Bedrock integration
-is claimed.
+A counterfactual debugging and regression-testing workbench for MCP-powered
+household automations. Reconstruct a saved decision from its stored evidence, run
+a proposed routine change through the production policy engine as a side-effect-free
+preflight suite, and see which decisions change before anything is approved.
 
-**Live:** https://homerelay-web.onrender.com  
+HomeRelay is a simulated household for the Alexa+ primary track of the Amazon
+Developer Hackathon. It uses a real self-hosted MCP server, deterministic policy
+and PostgreSQL. There is no runtime LLM: no natural-language parsing or model
+inference. No native Alexa+, Ring, physical lock or Bedrock integration is claimed.
+
+**Live:** https://homerelay-web.onrender.com
 **MCP:** https://homerelay-mcp.onrender.com/mcp (server-held bearer authentication)
 
-## Try it
+## Try the Time Machine
+
+1. **Incident (01).** The page shows the latest *recorded* Saturday arrival that
+   the weekday-only routine refused, reconstructed from PostgreSQL through the
+   `reconstruct_incident` MCP tool. The recorded reason code identifies the failed
+   check (`OUTSIDE_WEEKDAYS`). Earlier checks are shown as passed and later ones as
+   not reached, each citing a stored snapshot field. If no such decision exists, the
+   panel is labelled **Scenario fixture · not recorded**, with an unverified root
+   cause. **Record simulated Saturday arrival** stores a real (simulated-event)
+   decision after the routine is approved. Selecting any saved decision (07)
+   reconstructs it the same way.
+2. **Candidate fix (02).** The proposal adds Saturday to Mon–Fri, shown as a visual
+   diff. Days can be toggled. **Also request front-door unlock** tries to sneak a
+   prohibited action into the candidate. The candidate exists only in memory.
+3. **Run preflight suite (04).** The web backend calls the `run_preflight` MCP tool.
+   The server evaluates six fixed cases with the production `evaluate()` for both
+   the baseline and the candidate: approved weekday arrival, Saturday arrival,
+   before sunset, missing sunset, unapproved routine and door unlock. The table
+   shows each decision and reason code, whether it changed, and whether a safety
+   invariant was violated. For the Saturday candidate only the Saturday case
+   changes (PASS). With the unlock bypass the suite FAILS with
+   `PROHIBITED_ACTION_REQUESTED`, and every unlock verdict is still
+   `DOOR_UNLOCK_FORBIDDEN`. A candidate that drops an allowed weekday fails with
+   `PREVIOUSLY_ALLOWED_CASE_DENIED`.
+4. Preflight uses a **simulated approval** (`preflight-simulation`, `persisted:
+   false`), reported separately from the routine's real persisted approval. It never
+   saves, approves or activates the candidate. It writes no event, decision, action,
+   approval, routine or device row. It only stores the test run, which **Retrieve
+   saved run** fetches through `get_preflight_run`.
+
+## Live household (unchanged)
 
 1. Review the seeded weekday, after-sunset arrival routine. Approve it explicitly
    if it is still a draft. Approval itself performs no action.
@@ -116,7 +150,14 @@ npm run typecheck
 git diff --check
 ```
 
-Unit tests cover deterministic policy and strict schemas. Integration tests use
+Unit tests cover deterministic policy, strict schemas, the preflight suite (Saturday
+changes only the Saturday case; daytime, missing-sunset, unapproved and unlock cases
+stay denied; unlock bypass and weekday removal fail), that the exported check order
+matches `evaluate()` precedence, and incident reconstruction from stored reason codes.
+`migration.test.ts` upgrades a populated v1 database and proves MCP refuses to start
+on an unmigrated schema. `preflight.test.ts` runs the new tools through real web,
+MCP and PostgreSQL processes. It shows that seven side-effect tables are unchanged
+and that a saved run survives a restart. Integration tests use
 real PostgreSQL and separate HTTP MCP/web processes, including rollback, races,
 input/access boundaries, restart, outage, health and hosting configuration.
 Browser tests use real services in a disposable schema, exercise keyboard focus,
@@ -144,6 +185,11 @@ services sleep and have shared usage limits. This is not production availability
 
 Seeded drafts only: no arbitrary natural-language parser, editing, model inference,
 user identity, private household isolation, live sunset source or hardware adapter.
+Preflight cases are a fixed, server-defined suite on dated simulation fixtures (sunset
+fixtures exist only for 21 and 24 October 2026). Candidates can change weekdays and
+actions only. A passing preflight is not an approval: activating a candidate would
+need revision creation and explicit approval, which are not implemented. Saved
+preflight runs are public in this shared demo and are not rate-limited.
 All events and devices are explicitly simulated. No AWS mini-challenge claim.
 
 - [Verification](docs/verification.md) and [acceptance matrix](docs/acceptance-tests.md)

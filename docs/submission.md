@@ -1,20 +1,34 @@
 # HomeRelay submission copy
 
 ## Name and tagline
-HomeRelay
-A light on. A door still locked. Household assistance with rules and receipts.
+HomeRelay Time Machine
+Replay the incident. Test the fix. Block regressions.
 
 ## Inspiration
-A household assistant should be able to explain both an action and a refusal.
-Natural-language convenience is not sufficient authority to unlock a door, and a
-retry should not create another action. HomeRelay makes those boundaries visible.
+When a household automation does the wrong thing, the usual fix is to change the
+rule and hope. HomeRelay treats routine changes like code changes: reproduce the
+incident from stored evidence, test the fix against a regression suite, and refuse
+anything that weakens a safety boundary before it is approved.
 
 ## What it does
-HomeRelay provides a seeded arrival routine for explicit review and approval.
-Run a simulated weekday evening arrival: deterministic policy permits the porch
-light and keeps the door locked. Approve a separate unlock request and the same
-policy still refuses it. Replay the exact arrival event to retrieve its original
-receipt, then refresh and inspect the stored evidence explaining the result.
+HomeRelay Time Machine is a counterfactual debugging and regression-testing workbench
+for MCP-powered household automations. It reconstructs a saved decision, such as a
+Saturday arrival that a weekday-only routine refused, from its stored snapshots. The
+recorded reason code identifies the failed policy check, and each check cites stored
+evidence. If no such record exists, it shows a labelled scenario fixture rather than
+inventing one.
+
+You then propose a fix (add Saturday) and run a preflight suite. Through a real MCP
+tool, the server evaluates six cases with the production policy engine for the
+current routine and the candidate: weekday, Saturday, before sunset, missing sunset,
+unapproved and door unlock. The table shows that only the Saturday decision changes
+and that every safety invariant still holds. If someone tries to slip a door unlock
+into the candidate, the suite fails and every unlock stays denied. Preflight uses a
+clearly labelled simulated approval, saves only the test run, and never activates
+the candidate or touches devices, events or receipts.
+
+The original household flow remains: explicit approval, a simulated arrival that
+lights the porch, an approved unlock that is still denied, and idempotent replay.
 
 ## How it works
 A browser calls a Node web backend, which creates an official MCP SDK client and
@@ -24,18 +38,25 @@ An immutable routine revision and hash bind explicit approval to reviewed conten
 One transaction stores the event, decision snapshots, simulated device update and
 allowed action receipt. Database uniqueness prevents duplicate committed actions.
 Denied actions have no receipt. Evidence explains the original decision rather
-than recomputing history with current rules.
+than recomputing history with current rules. Three more MCP tools with typed
+schemas (`reconstruct_incident`, `run_preflight` and `get_preflight_run`) power the
+Time Machine. Preflight reuses the production `evaluate()` function without the
+event-processing path. An additive, checksummed migration stores runs. There is no
+runtime LLM. Every result comes from stored evidence or deterministic rules.
 
 ## Challenges and accomplishments
 The difficult part was making retries, failures and approval boundaries observable
 and correct together. Real PostgreSQL tests cover ten concurrent duplicate events,
 transaction rollback and process restart; real browser tests cover approval,
-denial, refresh, keyboard focus and MCP outage/recovery. A responsive editorial
-interface separates current device state, this visit's result and saved decisions.
+denial, refresh, keyboard focus and MCP outage/recovery. Time Machine tests show
+that preflight leaves seven domain tables byte-identical, that only the expected
+decision changes, that unlock bypass attempts fail, and that a populated database
+upgrades safely while the server refuses to start on an unmigrated schema.
 
 ## What is next
-Production identity and household isolation, a trusted sunset source, revision
-editing and a constrained proposal parser would be next. External devices require
+Turning a passing candidate into a new unapproved revision for explicit approval,
+user-defined preflight cases, production identity and household isolation, a trusted
+sunset source and a constrained proposal parser would be next. External devices require
 a separate delivery/reconciliation design. They are not implemented here.
 
 ## Track and scope

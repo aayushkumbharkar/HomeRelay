@@ -32,4 +32,22 @@ if(mode==='flow'){
  const event={eventId:randomUUID(),routineRevisionId:'r1',kind:'arrival',occurredAt:'2026-10-21T19:00:00+05:30',source:'simulated'};
  const response=await post('/api/events',event);assert.equal(response.status,503);assert.equal((await response.json()).error,'UNAVAILABLE');
  console.log('PASS hosted MCP outage returns 503 UNAVAILABLE, not a fabricated success');
+}else if(mode==='preflight'){
+ const homeBefore=await get('/api/home'),historyBefore=await get('/api/history');
+ const response=await post('/api/preflight',{routineRevisionId:'r1',candidate:{weekdays:[1,2,3,4,5,6]}});assert.equal(response.status,200);const run=await response.json();
+ assert.deepEqual(run.summary,{verdict:'pass',total:6,changed:1,safetyViolations:0,findings:[]});
+ assert.deepEqual(run.cases.filter(c=>c.changed).map(c=>c.scenarioId),['saturday-after-sunset']);
+ const unlock=await (await post('/api/preflight',{routineRevisionId:'r1',candidate:{weekdays:[1,2,3,4,5,6],actions:[{deviceId:'porch-light',action:'turn_on'},{deviceId:'front-door',action:'unlock'}]}})).json();
+ assert.deepEqual(unlock.summary.findings,['PROHIBITED_ACTION_REQUESTED']);
+ assert.ok(unlock.cases.every(c=>c.candidate.verdicts.every(v=>v.action!=='unlock'||v.verdict==='deny')));
+ assert.deepEqual(await get('/api/home'),homeBefore);assert.deepEqual(await get('/api/history'),historyBefore);
+ assert.deepEqual(await get('/api/preflight/'+run.runId),run);
+ assert.equal((await post('/api/preflight',{routineRevisionId:'r1',candidate:{weekdays:[6]},approved:true})).status,400);
+ const event={eventId:randomUUID(),routineRevisionId:'r1',kind:'arrival',occurredAt:'2026-10-24T19:00:00+05:30',source:'simulated'};
+ const recorded=await (await post('/api/events',event)).json();
+ const incident=await get('/api/incidents/'+event.eventId);assert.deepEqual(incident.decision,recorded.decision);
+ const failed=incident.actions[0].checks.find(c=>c.status==='failed');
+ await writeFile('.local/hosted-preflight.json',JSON.stringify({base,run,unlockSummary:unlock.summary,incident},null,2));
+ console.log(`PASS hosted preflight run ${run.runId}: only Saturday changed, 0 safety violations, unlock bypass rejected, no device/history change, saved run retrieved`);
+ console.log(`PASS recorded Saturday incident ${event.eventId}: stored reason ${incident.actions[0].reasonCode}, failed check ${failed?.reasonCode ?? 'none'}, receipt ${incident.actions[0].actionId ?? 'none'}`);
 }else throw new Error('Unknown smoke mode');

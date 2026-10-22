@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { EventSchema, DecisionSchema, DomainError, type HomeEvent, type Decision } from './contracts.js';
 import { household, hash, transaction } from './db.js';
 import { readRoutine } from './routines.js';
-import { evaluate, localDate } from './policy.js';
+import { evaluate, localDate, POLICY_VERSION } from './policy.js';
 import { sunsetFor } from './fixtures.js';
 import { executeSimulated } from './simulated-action.js';
 
@@ -37,7 +37,7 @@ export async function processEvent(pool: pg.Pool, input: HomeEvent) {
         actionId: allowed ? randomUUID() : null });
     }
     const decision = DecisionSchema.parse({ decisionId: randomUUID(), eventId: event.eventId,
-      routineRevisionId: event.routineRevisionId, policyVersion: 'household-v1', evaluatedAt: new Date().toISOString(),
+      routineRevisionId: event.routineRevisionId, policyVersion: POLICY_VERSION, evaluatedAt: new Date().toISOString(),
       eventSnapshot: event, routineSnapshot: view.routine, approvalSnapshot: view.approval,
       sunsetSnapshot: sunset, currentRevision: view.currentRevision, actions });
     await db.query('INSERT INTO decisions VALUES ($1,$2,$3,$4)', [decision.decisionId, household, event.eventId, decision]);

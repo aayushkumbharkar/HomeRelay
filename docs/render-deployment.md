@@ -53,3 +53,10 @@ https://homerelay-web.onrender.com; MCP: https://homerelay-mcp.onrender.com/mcp.
 Both are free Node services, managed PostgreSQL 18 is free in Oregon. The full
 browser scenario and independent API smoke passed; see verification.md for the
 cold-start failure and successful retry. Redesign deploy is recorded separately.
+
+Time Machine release (2026-10-23): no Render configuration change. The existing
+`start:production:mcp` runs `migrate` before listening, so the additive migration 002
+(`preflight_runs`) is applied under the advisory lock on the first MCP start of the
+new commit. Until it is applied the new MCP refuses to start (tested). The old MCP
+does not read the new table. Live verification uses `SMOKE_URL=... node
+scripts/hosted-smoke.mjs preflight`; results are in verification.md.

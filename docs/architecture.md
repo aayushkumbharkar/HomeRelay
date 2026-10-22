@@ -130,3 +130,28 @@ protocol/tool errors remain SDK-managed; the web adapter maps domain errors.
 GET history makes no state changes. Missing evidence yields NOT_FOUND, never a
 model-generated explanation. Startup health checks DB connectivity and migrations;
 no fallback to memory. Close pools, transports and servers on normal shutdown.
+
+## Time Machine continuation (2026-10-23)
+
+Additional read-only/test MCP tools, each with strict Zod input and enveloped output
+schemas registered through the official SDK:
+
+| Web route | MCP tool | Contract |
+| --- | --- | --- |
+| GET /api/incidents/:eventId | reconstruct_incident | stored decision + per-action ordered checks (passed / failed / not_reached) with evidence strings from stored snapshots; NOT_FOUND if never recorded |
+| POST /api/preflight | run_preflight | `{routineRevisionId, candidate: {weekdays 0-6, actions?}}` -> saved run with baseline/candidate verdicts for six fixed cases; CSRF + same origin |
+| GET /api/preflight/:runId | get_preflight_run | saved run JSON or NOT_FOUND |
+
+`src/preflight.ts` calls the production `evaluate()` with hypothetical events and a
+simulated approval (`actor: preflight-simulation`, never written to `approvals`). It
+does not call `processEvent()` and opens no transaction on domain tables. Its only
+write is one insert into `preflight_runs` (migration 002, additive, insert-only, never
+read by event processing). `src/incident.ts` does not re-evaluate. It places the
+recorded reason code in `CHECK_ORDER` (exported beside `evaluate()` and pinned to it by
+a unit test). Checks before the failure are implied passed by policy precedence, and
+checks after it are not reached. The browser contains no policy logic. It displays
+server results.
+
+`migrate()` now applies an ordered, checksummed list under the same advisory lock.
+MCP startup requires the latest schema version and refuses to listen otherwise.
+`db/*.sql` is pinned to LF in `.gitattributes` because checksums hash the file text.

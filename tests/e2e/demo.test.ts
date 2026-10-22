@@ -17,9 +17,9 @@ test('browser approval, execution, denial, replay, refresh, mobile and MCP outag
  await page.goto(web.url);
  await page.keyboard.press('Tab');
  await expect(page.getByRole('link',{name:'Skip to workspace'})).toBeFocused();
- await expect(page.getByRole('heading',{name:'A light on. A door still locked.'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Replay the incident. Test the fix. Block regressions.'})).toBeVisible();
  await expect(page.locator('#scenario-state')).toHaveText('No scenario run this visit');
- const mainAction=await page.getByRole('button',{name:'Run arrival scenario',exact:true}).boundingBox();
+ const mainAction=await page.getByRole('button',{name:'Run preflight suite',exact:true}).boundingBox();
  assert.ok(mainAction && mainAction.y+mainAction.height <= 1000);
  await expect(page.getByRole('button',{name:'Approve routine',exact:true})).toBeEnabled();
  await expect(page.getByRole('button',{name:'Run arrival scenario',exact:true})).toBeDisabled();

@@ -2,6 +2,10 @@ import type { PolicyInput, Verdict } from './contracts.js';
 export function localDate(instant: string, timezone: string) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(instant));
 }
+export const POLICY_VERSION = 'household-v1';
+// The denial codes in the precedence evaluate() applies; a unit test pins this to evaluate().
+export const CHECK_ORDER = ['DOOR_UNLOCK_FORBIDDEN', 'REVISION_SUPERSEDED', 'APPROVAL_REQUIRED', 'TRIGGER_MISMATCH',
+  'OUTSIDE_WEEKDAYS', 'SUNSET_UNAVAILABLE', 'NOT_AFTER_SUNSET'] as const satisfies readonly Verdict['reasonCode'][];
 export function evaluate({ event, routine, approval, currentRevision, sunset }: PolicyInput): Verdict[] {
   const day = new Intl.DateTimeFormat('en-US', { timeZone: routine.timezone, weekday: 'short' }).format(new Date(event.occurredAt));
   const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(day);

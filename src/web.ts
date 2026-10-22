@@ -33,6 +33,8 @@ const server = createServer((req, res) => { void (async () => {
       if (path === '/api/history') { send(res,200,await callMcp('list_decisions',{})); return; }
       if (path === '/api/session') { send(res, 200, { csrfToken }); return; }
       if (path.startsWith('/api/routines/')) { send(res, 200, await callMcp('get_routine', { routineRevisionId: decodeURIComponent(path.slice(14)) })); return; }
+      if (path.startsWith('/api/incidents/')) { send(res, 200, await callMcp('reconstruct_incident', { eventId: decodeURIComponent(path.slice(15)) })); return; }
+      if (path.startsWith('/api/preflight/')) { send(res, 200, await callMcp('get_preflight_run', { runId: decodeURIComponent(path.slice(15)) })); return; }
       if (path.startsWith('/api/decisions/')) { send(res, 200, await callMcp('get_decision', { eventId: decodeURIComponent(path.slice(15)) })); return; }
       send(res, 404, { error: 'NOT_FOUND' }); return;
     }
@@ -42,6 +44,7 @@ const server = createServer((req, res) => { void (async () => {
     if (req.headers['content-type']?.split(';')[0] !== 'application/json') { send(res, 415, { error: 'JSON_REQUIRED' }); return; }
     if (path === '/api/approve') send(res, 200, await callMcp('approve_routine', await body(req)));
     else if (path === '/api/events') send(res, 200, await callMcp('simulate_event', await body(req)));
+    else if (path === '/api/preflight') send(res, 200, await callMcp('run_preflight', await body(req)));
     else send(res, 404, { error: 'NOT_FOUND' });
   } catch (error) {
     const code = error instanceof DomainError ? error.code : error instanceof z.ZodError ? 'INVALID_INPUT' : 'UNAVAILABLE';

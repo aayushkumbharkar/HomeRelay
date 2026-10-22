@@ -63,3 +63,15 @@ action insert; no production test-only failure endpoint is permitted.
 
 Every milestone entry in the plan lists commands and current actual status.
 The [verification ledger](verification.md) is the source of executed results.
+
+## Time Machine acceptance (2026-10-23)
+
+| ID | Given / when | Required observable result | Test |
+| --- | --- | --- | --- |
+| AC-19 | Stored OUTSIDE_WEEKDAYS decision reconstructed | Response decision equals stored decision; failed check is the recorded reason; evidence cites stored approval actor; absent ID is 404 | unit/preflight.test.ts, integration/preflight.test.ts |
+| AC-20 | No applicable historical record | UI labels "Scenario fixture · not recorded", root cause "unverified"; nothing fabricated | e2e/timemachine.test.ts |
+| AC-21 | Saturday candidate preflight | Only saturday-after-sunset changes (OUTSIDE_WEEKDAYS -> ARRIVAL_RULE_MATCHED); summary pass, 0 violations | unit + integration + e2e |
+| AC-22 | Daytime, missing-sunset, unapproved and unlock cases | NOT_AFTER_SUNSET, SUNSET_UNAVAILABLE, APPROVAL_REQUIRED, DOOR_UNLOCK_FORBIDDEN on both sides | unit/preflight.test.ts |
+| AC-23 | Candidate adds front-door unlock | Every unlock verdict denied; summary fail PROHIBITED_ACTION_REQUESTED | unit + integration + e2e |
+| AC-24 | Preflight over real web -> MCP -> PostgreSQL | devices/events/decisions/actions/approvals/routine rows unchanged; run saved and retrievable after restart; forged/invalid input rejected | integration/preflight.test.ts |
+| AC-25 | Populated v1 DB | MCP refuses to start; migrate adds v2 idempotently without changing history; tampered checksum rejected | integration/migration.test.ts |

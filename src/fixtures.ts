@@ -7,9 +7,11 @@ export const routine: Routine = {
   trigger: 'arrival', weekdays: [1,2,3,4,5], timezone: 'Asia/Kolkata',
   actions: [{ deviceId: 'porch-light', action: 'turn_on' }]
 };
+// Explicit dated simulation fixtures; any other date has no sunset evidence and fails closed.
+const sunsets: Record<string, string> = { '2026-10-21': '2026-10-21T18:00:00+05:30', '2026-10-24': '2026-10-24T17:58:00+05:30' };
 export function sunsetFor(date: string): Sunset | null {
-  if (date !== '2026-10-21') return null;
-  return { date, timezone: 'Asia/Kolkata', sunsetAt: '2026-10-21T18:00:00+05:30', source: 'simulated' };
+  if (!sunsets[date]) return null;
+  return { date, timezone: 'Asia/Kolkata', sunsetAt: sunsets[date], source: 'simulated' };
 }
 export async function seed(pool: pg.Pool) {
   await transaction(pool, async db => {
