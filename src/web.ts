@@ -53,7 +53,7 @@ server.listen(Number(process.env.PORT ?? process.env.WEB_PORT ?? 3000), process.
   const address = server.address();
   if (address && typeof address !== 'string') {
     process.send?.({ port: address.port });
-    console.log(`HomeRelay backend listening on 127.0.0.1:${address.port}; simulated devices only`);
+    console.log(`HomeRelay backend listening on ${process.env.BIND_HOST ?? "127.0.0.1"}:${address.port}; simulated devices only`);
   }
 });
 const stop = () => { server.closeAllConnections(); server.close(); };

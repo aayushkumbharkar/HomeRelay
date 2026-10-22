@@ -1,60 +1,70 @@
-# HomeRelay browser workflow
-
-Review a seeded draft, explicitly approve it, simulate arrival, challenge the
-unlock policy, replay, and inspect persisted decisions. The browser calls the
-backend, which invokes the official SDK MCP server; PostgreSQL stores evidence.
-
-After setup below, run `npm run build`, `npm run db:migrate`, `npm run db:seed`.
-In separate terminals run `npm run start:mcp` and `npm run start:web`.
-Open http://127.0.0.1:3000/. The fixture is 21 October 2026 at 19:00 Asia/Kolkata,
-with simulated sunset at 18:00. No real devices or live sunset integration.
-
-`npm run test:e2e` uses installed Microsoft Edge with Playwright and an isolated
-PostgreSQL schema. Configure the Chromium channel in tests/e2e/demo.test.ts on
-other operating systems. The demonstration database is never reset by tests.
-
-See [Render deployment](docs/render-deployment.md) and
-[executed verification](docs/verification.md). Natural-language parsing/editing,
-Bedrock, native Alexa+, real locks and multi-user identity remain unimplemented.
-Older backend-only setup notes below remain useful; deferred-UI status is historical.
-
----
-
 # HomeRelay
 
-A policy-aware household assistant planned for the Amazon Developer Hackathon,
-Alexa+ primary track. Devices and home events are simulated.
+**A light on. A door still locked.**
 
-**Status: first backend vertical slice implemented.** A web API calls a separate
-self-hosted MCP service using the official SDK. PostgreSQL stores approvals,
-policy decisions, simulated device state and action receipts atomically. No
-frontend, natural-language parser, Bedrock, native Alexa+ or real devices exist.
+An assistant that acts within your rules and keeps proof of every decision.
+HomeRelay is a simulated household experience for the Alexa+ primary track of
+the Amazon Developer Hackathon. It uses a real self-hosted MCP server, deterministic
+policy, and PostgreSQL. No native Alexa+, Ring, physical lock or Bedrock integration
+is claimed.
 
-- [Project specification](docs/superpowers/specs/2026-10-22-homerelay-design.md)
-- [Architecture](docs/architecture.md)
-- [Acceptance test specification](docs/acceptance-tests.md)
-- [Smallest vertical slice and milestone plan](docs/superpowers/plans/2026-10-22-homerelay-vertical-slice.md)
-- [Risks and blockers](docs/risks.md)
-- [Environment inspection and actual verification results](docs/verification.md)
-- [Official sources](docs/sources.md)
+**Live:** https://homerelay-web.onrender.com  
+**MCP:** https://homerelay-mcp.onrender.com/mcp (server-held bearer authentication)
+
+## Try it
+
+1. Review the seeded weekday, after-sunset arrival routine. Approve it explicitly
+   if it is still a draft. Approval itself performs no action.
+2. Choose **Run arrival scenario**. The backend confirms a simulated porch-light
+   action; the door remains locked.
+3. Choose **Try prohibited action**, then approve the separate test request.
+   The policy denies door unlocking even with approval.
+4. **Replay same event** returns the original decision and action receipt.
+5. **Why did this happen?** retrieves stored evidence. Refresh and choose a saved
+   decision; expand **Technical evidence** for complete IDs and snapshots.
+
+This is one shared demonstration household. Other visitors may have already
+approved the seed or turned the light on. A fresh page never claims to have run a
+new scenario. Do not enter personal data. Free Render services can take about a
+minute to wake; if unavailable, wait and select **Refresh evidence**.
+
+## Architecture and guarantees
+
+```text
+Browser → Node web backend → official MCP client → HTTPS Streamable HTTP
+        → separate official-SDK MCP server → deterministic rules → PostgreSQL
+```
+
+The browser contains no MCP credential, database connection or policy engine.
+The web backend has no database or policy imports and cannot bypass an MCP outage.
+SDK pins: client/server 2.3.1, Node adapter 2.1.1. The executed transport test
+negotiates MCP **2025-11-25**. The SDK owns protocol serialization and negotiation.
+
+Approval is bound to an immutable revision and content hash. Policy checks the
+approval, current revision, event kind, local weekday and dated sunset fixture.
+Door unlocking is always denied. Missing sunset evidence fails closed. The demo
+simulates 21 October 2026 at 19:00 Asia/Kolkata with sunset at 18:00.
+
+One PostgreSQL transaction stores the event, immutable decision snapshots, allowed
+action receipt and simulated device update. Unique household/event and
+decision/action constraints prevent duplicate commits, including ten simultaneous
+replays. Reusing an ID with different input returns 409. Replays return the old
+result, even if rules or approvals later change. A denied action has no receipt.
+These guarantees cover the transactional simulator, not external hardware delivery.
 
 ## Local setup
 
-Run from the repository root. Prerequisites: npm with a bootstrap Node >=20 and
-working Docker Desktop. `npm ci` installs pinned dependencies including a
-project-local Node 24; npm scripts use that runtime without changing system Node.
+Prerequisites: npm with bootstrap Node >=20, Docker Desktop, and Microsoft Edge
+for the browser test. `npm ci` installs a pinned project Node 24.22.0 runtime.
+Run from the repository root:
 
 ```powershell
 npm ci
 Copy-Item .env.example .env
 ```
 
-If `.env` already exists, keep it. Replace the password/token placeholders with
-random secrets; use the same DB password in POSTGRES_PASSWORD and both URLs.
-Never print or commit `.env`. Docker PostgreSQL uses loopback port **15432**;
-55432 is reserved on the inspected Windows machine. The existing host PostgreSQL
-on 5432 is not used or modified. For another instance, configure the two URLs
-instead; the dedicated test database name must end in `_test`.
+Keep an existing `.env`. Replace placeholders with random secrets; use the same
+PostgreSQL password in POSTGRES_PASSWORD and both connection URLs. Never commit it.
 
 ```powershell
 docker compose up -d --wait
@@ -64,73 +74,81 @@ npm run db:seed
 npm run build
 ```
 
-Create the test database once; an “already exists” response means retain it.
-Migrations are versioned/checksummed and transactional. Seeding never resets an
-approval, device or decision. Tests create and remove uniquely named schemas only
-inside the explicit test DB. PostgreSQL uses a named volume; do not delete it to
-test persistence.
+Create the test database only once. PostgreSQL runs on loopback port 15432 with a
+named volume; existing host PostgreSQL is untouched. Another PostgreSQL instance
+may be used by configuring the URLs. The test database name must end in `_test`.
+Migrations are transactional and checksummed under an advisory lock. Seeds preserve
+existing approvals, decisions and device state. Never delete the volume to restart.
 
-Start these in separate terminals:
+In separate terminals:
 
 ```powershell
 npm run start:mcp
 npm run start:web
 ```
 
-Default web API: `http://127.0.0.1:3000`; MCP endpoint:
-`http://127.0.0.1:3001/mcp`. The root page is intentionally not implemented.
-The MCP bearer token stays on the server. Only MCP receives database access in
-the automated process tests; the web module has no database/policy imports.
+Open http://127.0.0.1:3000. Local MCP listens on http://127.0.0.1:3001/mcp.
 
-## Explicit approval and simulated arrival
+## Environment variables
 
-PowerShell example; each POST is a separate explicit operator action. Inspect
-the seeded draft before approving. The date and sunset are fixed simulation
-fixtures, independent of today's clock.
+| Name | Purpose |
+| --- | --- |
+| POSTGRES_PASSWORD | Local Docker database password; secret |
+| DATABASE_URL | PostgreSQL connection; MCP/migration/seed only; secret |
+| TEST_DATABASE_URL | Dedicated test DB ending `_test`; secret |
+| MCP_TOKEN | At least 32 characters; shared only between web and MCP; secret |
+| MCP_URL | Full local MCP endpoint, including `/mcp` |
+| MCP_BASE_URL | Render public MCP service URL; client appends `/mcp` |
+| MCP_PORT / WEB_PORT | Local ports; defaults 3001 / 3000 |
+| PORT | Render-assigned listening port; overrides local port |
+| BIND_HOST | Local default 127.0.0.1; Render 0.0.0.0 |
+| RENDER_EXTERNAL_URL | Render-provided exact public origin for Host/Origin checks |
+| NODE_VERSION | Render runtime pin 24.22.0 |
+| SMOKE_URL | Explicit HTTPS target for hosted verification scripts |
 
-```powershell
-$relayBase = 'http://127.0.0.1:3000'
-$relaySession = Invoke-RestMethod "$relayBase/api/session"
-$relayHeaders = @{ Origin = $relayBase; 'X-CSRF-Token' = $relaySession.csrfToken }
-$relayDraft = Invoke-RestMethod "$relayBase/api/routines/r1"
-$relayDraft.routine
-
-# Execute only after reviewing the displayed draft:
-$relayApproval = @{ routineRevisionId = 'r1'; contentHash = $relayDraft.contentHash } | ConvertTo-Json
-Invoke-RestMethod "$relayBase/api/approve" -Method Post -Headers $relayHeaders -ContentType 'application/json' -Body $relayApproval
-
-$relayEvent = @{ eventId = 'arrival-001'; routineRevisionId = 'r1'; kind = 'arrival'; occurredAt = '2026-10-21T19:00:00+05:30'; source = 'simulated' } | ConvertTo-Json
-$relayResult = Invoke-RestMethod "$relayBase/api/events" -Method Post -Headers $relayHeaders -ContentType 'application/json' -Body $relayEvent
-$relayResult | ConvertTo-Json -Depth 12
-
-# Replay exactly the same event; same decision, no new receipt:
-Invoke-RestMethod "$relayBase/api/events" -Method Post -Headers $relayHeaders -ContentType 'application/json' -Body $relayEvent
-Invoke-RestMethod "$relayBase/api/decisions/arrival-001"
-```
-
-Stop and restart both Node services, then GET that decision again; do not reseed
-or delete the volume. Fetch a new `/api/session` token before new POSTs after a
-web restart. A reused event ID with different normalized input returns 409.
-Before approval, a new event persists an APPROVAL_REQUIRED denial. Denied events
-remain denied on replay; use a fresh event ID after approving.
-
-The prototype never unlocks a door. Its policy, simulated adapter and database
-constraints prevent an unlock action. The integration test creates an approved
-unlock fixture in an isolated schema to prove that denial; no unlock UI or real
-lock command exists.
-
-## Verification
+## Tests
 
 ```powershell
-npm run test:mcp
 npm run test:unit
 npm run test:integration
+npm run test:e2e
 npm run typecheck
+git diff --check
 ```
 
-MCP proof runs without PostgreSQL; integration tests require the test DB. Tests
-fail rather than silently skip missing infrastructure. Integration coverage
-includes transaction rollback, ten concurrent duplicates, changed-payload
-conflicts, web/MCP process restart, stored evidence, and input/access validation.
-Actual counts and red/green history are in [the verification ledger](docs/verification.md).
-This is a local single-operator prototype, not an authenticated hosted service.
+Unit tests cover deterministic policy and strict schemas. Integration tests use
+real PostgreSQL and separate HTTP MCP/web processes, including rollback, races,
+input/access boundaries, restart, outage, health and hosting configuration.
+Browser tests use real services in a disposable schema, exercise keyboard focus,
+approval, denial, replay, refresh, neutral page state, mobile layout, outage and
+recovery. They never reset the demonstration DB. Configure the browser channel in
+`tests/e2e/demo.test.ts` if Microsoft Edge is unavailable on your OS.
+
+`npm run test:mcp` is a database-independent official-SDK transport proof.
+No test silently skips missing services. See [actual results](docs/verification.md).
+
+## Render
+
+[render.yaml](render.yaml) provisions two free Node web services and PostgreSQL 18
+in Oregon. The MCP process migrates/seeds before listening and stops on startup
+failure. `/healthz` checks MCP database connectivity; the web health check is
+process liveness, while the UI checks the full chain. Free services cannot receive
+private traffic, so web calls public HTTPS MCP with a generated server-only token.
+The database connection is internal; external PostgreSQL access is blocked.
+
+See [deployment details](docs/render-deployment.md). PostgreSQL free-plan data
+expires after 30 days; upgrade or export before expiry to retain evidence. Free
+services sleep and have shared usage limits. This is not production availability.
+
+## Limits and submission evidence
+
+Seeded drafts only: no arbitrary natural-language parser, editing, model inference,
+user identity, private household isolation, live sunset source or hardware adapter.
+All events and devices are explicitly simulated. No AWS mini-challenge claim.
+
+- [Verification](docs/verification.md) and [acceptance matrix](docs/acceptance-tests.md)
+- [Architecture](docs/architecture.md) and [risks](docs/risks.md)
+- [Demo script](docs/demo-script.md) and [product feedback](docs/product-feedback.md)
+- [Submission draft](docs/submission.md)
+
+MIT licensed. See [LICENSE](LICENSE).

@@ -232,3 +232,41 @@ tests/e2e/demo.test.ts, render.yaml, AGENTS.md, README.md and project docs.
 Render account menu verified aayushkumbharkar53@gmail.com. No Render resources
 created yet. Blueprint references generated secret and internal PostgreSQL URL;
 public MCP service uses bearer auth. Hosted workflow NOT RUN. Railway abandoned.
+
+## Live flow and focused redesign — 2026-10-23
+
+Before redesign or disruption, scripts/hosted-browser.mjs completed the live
+browser flow on homerelay-web.onrender.com: unapproved draft, explicit approval,
+arrival execution, locked door, approved unlock denial, original-event replay,
+refresh and original evidence. Zero browser JS errors. Screenshots and the actual
+recording are in test-results/hosted (local artifacts, excluded from Git).
+
+An independent scripts/hosted-smoke.mjs flow initially returned 503 while the free
+MCP service woke. A direct /healthz request subsequently returned 200 and repeating
+flow passed approval, execution, denial, original receipt replay and retrieval.
+This was an observed cold-start recovery, not a silent passing first attempt.
+Public MCP without bearer returned 401; database health returned 200.
+
+Render resources: homerelay-web (srv-dbcsrvjncjis73dhq5p0), homerelay-mcp
+(srv-dbcsrfjncjis73dhokpg), homerelay-db (dpg-dbcsqv3ncjis73dhmtr0-a), Oregon.
+Both web services reported Live at eef3cde; actual logs showed npm ci/build and
+MCP migration/seed startup succeeding. Account was verified as
+ aayushkumbharkar53@gmail.com before provisioning. No secret copied into source/UI.
+
+Redesign TDD: browser assertion first failed on missing requested headline.
+After focused public HTML/CSS/JS edits, test passes requested headline/action
+within 1440x1000 viewport, neutral current-visit state after reload, readable
+explanation and collapsed Technical evidence. Desktop/mobile captures inspected.
+No backend policy/schema changes. Log lines now accurately report configured bind
+address instead of a hardcoded loopback label.
+
+Final local regression after redesign:
+- npm run test:unit — 12 pass, 0 fail/skip.
+- npm run test:integration — 9 pass, 0 fail/skip.
+- npm run test:e2e — 1 pass, 0 fail/skip; includes real MCP stop/restart, refreshed
+  connection recovery and unchanged SQL receipt count, keyboard skip/dialog focus.
+- npm run typecheck — exit 0.
+- git diff --check — exit 0 (line-ending notices only).
+
+New deployment/restart verification of this redesigned commit remains pending
+until recorded below. Public video and Devpost final submission are not yet done.

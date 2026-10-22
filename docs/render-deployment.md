@@ -46,3 +46,10 @@ Official references checked 2026-10-22:
 - https://render.com/docs/private-network
 - https://render.com/docs/free
 - https://render.com/docs/web-services
+
+
+Live resources were provisioned and verified before redesign. Web:
+https://homerelay-web.onrender.com; MCP: https://homerelay-mcp.onrender.com/mcp.
+Both are free Node services, managed PostgreSQL 18 is free in Oregon. The full
+browser scenario and independent API smoke passed; see verification.md for the
+cold-start failure and successful retry. Redesign deploy is recorded separately.
