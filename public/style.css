@@ -41,3 +41,5 @@ main{padding-top:20px}.intro{margin-bottom:14px}.intro h1{font-size:36px;margin-
 .intro p:last-child{max-width:980px}.checks{gap:3px 4px}.checks li{padding:1px 6px;font-size:10.5px}
 /* Final fit: one-line intro, inline reason code, 1px tighter table cells and section gaps. Text sizes unchanged. */
 .intro p:last-child{max-width:none}.cause strong{display:inline;margin-right:6px}#notice{margin-bottom:12px}.suite{margin-top:14px}#comparison td{padding:4px 10px}
+/* Per-section recovery control. */
+.retry{display:block;margin:8px 0;min-height:36px;padding:6px 12px;font-size:12px}

@@ -14,10 +14,20 @@ const reasonText = {
  NOT_AFTER_SUNSET: 'The event occurred at or before the stored sunset time.'
 };
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error',error); }
+// Bounded wake-up handling: one readiness probe at a time, 8 attempts (~1 minute of backoff), then stop.
+const READY_DELAYS = [2,3,5,8,12,15,20];
+const loadedAt = {routine:null, home:null, history:null, incident:null};
 async function api(path, value) {
- const response = await fetch(path, value === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(value)});
- const data = await response.json();
- if (!response.ok) throw new Error(data.error || 'UNAVAILABLE');
+ const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+ let response, text;
+ try {
+  response = await fetch(path, {...(value === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(value)}), signal:controller.signal});
+  text = await response.text();
+ } catch { throw new Error('UNAVAILABLE'); } finally { clearTimeout(timer); }
+ // A Render error page is HTML, not JSON: treat it as a service error, never as a script error.
+ let data = null; try { data = JSON.parse(text); } catch {}
+ if (!response.ok) throw new Error(data?.error || (response.status >= 500 ? 'UNAVAILABLE' : 'HTTP_' + response.status));
+ if (data === null) throw new Error('UNAVAILABLE');
  return data;
 }
 function controls() {
@@ -69,40 +79,117 @@ function timeline() {
   $('history').append(button);
  }
 }
-async function refresh() {
- const [session, routine, home, saved] = await Promise.all([api('/api/session'),api('/api/routines/r1'),api('/api/home'),api('/api/history')]);
- csrf=session.csrfToken;draft=routine;history=saved;available=true;
- $('connection').textContent='● MCP connected';
- $('source').textContent=`“${draft.routine.sourceText}”`;
- $('trigger').textContent=draft.routine.trigger==='arrival'?'You arrive home':draft.routine.trigger;
- $('schedule').textContent=draft.routine.weekdays.map(d=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')+' · '+draft.routine.timezone;
- $('approval-state').textContent=draft.approval?'Approved':'Awaiting approval';
- for(const device of home.devices) {const value=device.state[0].toUpperCase()+device.state.slice(1);$(device.deviceId==='porch-light'?'porch-state':'door-state').textContent=value;}
- $('lamp').classList.toggle('on',home.devices.some(d=>d.deviceId==='porch-light'&&d.state==='on'));
- timeline();candidateView();
- const target=selectedIncident??history.find(d=>d.routineRevisionId===draft.routine.revisionId&&d.actions.some(a=>a.reasonCode==='OUTSIDE_WEEKDAYS'))?.eventId;
- if(target)showIncident(await api('/api/incidents/'+encodeURIComponent(target)));else showFixture();
- controls();
+const sectionNames = {routine:'routine', home:'device state', history:'saved history', incident:'incident'};
+const clock = date => date.toLocaleTimeString();
+function retryButton(name, anchor, load) {
+ $('retry-'+name)?.remove();
+ const button = node('button','Retry '+sectionNames[name]);button.id='retry-'+name;button.className='quiet retry';
+ button.addEventListener('click',()=>work(async()=>{await load();controls();notice(loadedAt[name]?`Retrieved ${sectionNames[name]} through MCP.`:`Could not retrieve ${sectionNames[name]}. Try again shortly.`,!loadedAt[name]);}));
+ anchor.after(button);
 }
+// Each loader shows only data actually retrieved; on failure it marks its own section and never throws.
+async function loadRoutine() {
+ try {
+  draft = await api('/api/routines/r1');
+  $('source').textContent=`“${draft.routine.sourceText}”`;
+  $('trigger').textContent=draft.routine.trigger==='arrival'?'You arrive home':draft.routine.trigger;
+  $('schedule').textContent=draft.routine.weekdays.map(d=>dayNames[d]).join(', ')+' · '+draft.routine.timezone;
+  $('approval-state').textContent=draft.approval?'Approved':'Awaiting approval';
+  loadedAt.routine=new Date();$('retry-routine')?.remove();candidateView();
+ } catch { failSection('routine'); }
+}
+async function loadHome() {
+ try {
+  const home = await api('/api/home');
+  for(const device of home.devices) {const value=device.state[0].toUpperCase()+device.state.slice(1);$(device.deviceId==='porch-light'?'porch-state':'door-state').textContent=value;}
+  $('lamp').classList.toggle('on',home.devices.some(d=>d.deviceId==='porch-light'&&d.state==='on'));
+  $('device-caption').textContent='Current state from PostgreSQL · not a new execution';$('scene-caption').textContent='A little light. A locked door.';
+  loadedAt.home=new Date();$('retry-home')?.remove();
+ } catch { failSection('home'); }
+}
+async function loadHistory() {
+ try { history = await api('/api/history'); loadedAt.history=new Date(); timeline(); $('retry-history')?.remove(); }
+ catch { failSection('history'); }
+}
+async function loadIncident() {
+ // Without saved history we cannot know whether a recorded incident exists, so the fixture is not offered.
+ if(!loadedAt.history){failSection('incident');return;}
+ try {
+  const target=selectedIncident??history.find(d=>d.routineRevisionId===(draft?.routine.revisionId??'r1')&&d.actions.some(a=>a.reasonCode==='OUTSIDE_WEEKDAYS'))?.eventId;
+  if(target)showIncident(await api('/api/incidents/'+encodeURIComponent(target)));else showFixture();
+  loadedAt.incident=new Date();$('retry-incident')?.remove();
+ } catch { failSection('incident'); }
+}
+const loaders = {routine:loadRoutine, home:loadHome, history:loadHistory, incident:loadIncident};
+function failSection(name) {
+ const stale = loadedAt[name] ? `Stale · retrieved ${clock(loadedAt[name])}` : null;
+ if(name==='routine'){
+  $('approval-state').textContent=stale??'Unavailable';
+  if(!stale){$('source').textContent='Routine not loaded. Nothing is assumed about its schedule or approval.';$('trigger').textContent='—';$('schedule').textContent='—';}
+  retryButton('routine',$('source'),loadRoutine);
+ } else if(name==='home'){
+  if(stale)$('device-caption').textContent=`Could not refresh. Showing state retrieved at ${clock(loadedAt.home)}; it may be stale.`;
+  else{$('porch-state').textContent='Not loaded';$('door-state').textContent='Not loaded';$('lamp').classList.remove('on');
+   $('device-caption').textContent='Device state not loaded — this is not a reading of the devices.';$('scene-caption').textContent='Device state not loaded.';}
+  retryButton('home',$('device-caption'),loadHome);
+ } else if(name==='history'){
+  $('history-count').textContent=stale??'Unavailable';
+  if(!stale)$('history').replaceChildren(node('p','Saved decisions could not be retrieved. None are assumed.'));
+  retryButton('history',$('history-count'),async()=>{await loadHistory();if(loadedAt.history&&!loadedAt.incident)await loadIncident();});
+ } else {
+  $('record').hidden=true;
+  if(stale)$('incident-basis').textContent=stale;
+  else{$('incident-basis').textContent='Unavailable';$('incident-basis').className='badge';$('incident-heading').textContent='Incident evidence unavailable';
+   $('incident').replaceChildren(node('p','The incident could not be retrieved. No incident is shown rather than a guess.'));}
+  retryButton('incident',$('incident'),async()=>{if(!loadedAt.history)await loadHistory();await loadIncident();});
+ }
+}
+async function waitForReady() {
+ for(let attempt=1;;attempt++){
+  try{await api('/api/ready');return;}
+  catch(error){
+   if(error.message==='UPSTREAM_REJECTED')throw error;
+   if(attempt>READY_DELAYS.length)throw new Error('MCP_UNREACHABLE');
+   $('connection').textContent='◌ Connecting…';
+   notice(`Connecting to HomeRelay. The MCP service may be waking from sleep; retrying (attempt ${attempt+1} of ${READY_DELAYS.length+1})…`);
+   await new Promise(resolve=>setTimeout(resolve,READY_DELAYS[attempt-1]*1000));
+  }
+ }
+}
+async function refresh({probe=true}={}) {
+ if(!csrf)csrf=(await api('/api/session')).csrfToken; // web-local; independent of MCP
+ if(probe)await waitForReady();
+ available=true;$('connection').textContent='● MCP connected';
+ await Promise.all([loadRoutine(),loadHome(),loadHistory()]);
+ await loadIncident();
+ controls();
+ return Object.keys(loaders).filter(name=>$('retry-'+name));
+}
+const gapsNotice = missing => notice(`Connected, but some evidence could not be retrieved: ${missing.map(n=>sectionNames[n]).join(', ')}. Use the Retry button in that section.`,true);
 async function work(action) {
  if(busy)return;busy=true;controls();notice('Working through MCP. Waiting for a confirmed result…');
- try{await action();}catch(error){available=false;$('connection').textContent='○ Connection needs attention';
-  if($('incident-basis').textContent==='Loading'){$('incident-basis').textContent='Unavailable';$('incident-heading').textContent='Incident evidence unavailable';$('incident').replaceChildren(node('p','MCP could not be reached. No incident is shown rather than a guess. Select Refresh evidence once the service is awake.'));}notice(error.message==='UNAVAILABLE'?'Service unavailable or waking from sleep. Wait about a minute, then Refresh evidence. Displayed state may be stale; no success is assumed.':`Request failed (${error.message}). Refresh evidence before retrying.`,true);}finally{busy=false;controls();}
+ try{await action();}catch(error){
+  available=false;
+  for(const name of Object.keys(loaders)) if(!loadedAt[name]||error.message==='MCP_UNREACHABLE') failSection(name);
+  if(error.message==='UPSTREAM_REJECTED'){$('connection').textContent='○ Configuration problem';notice('The web service could not authenticate to the MCP service. This is a configuration problem, not a wake-up delay, so retrying will not help. Please report it.',true);}
+  else if(error.message==='MCP_UNREACHABLE'){$('connection').textContent='○ MCP unavailable';notice(`The MCP service is unavailable: could not reach it after ${READY_DELAYS.length+1} attempts. Free Render services can take about a minute to wake: select Refresh evidence to try again. If it keeps failing, please report it, as it may be a deployment or configuration problem. Displayed state may be stale; no success is assumed.`,true);}
+  else{$('connection').textContent='○ Connection needs attention';notice(error.message==='UNAVAILABLE'?'Service unavailable or waking from sleep. Wait about a minute, then Refresh evidence. Displayed state may be stale; no success is assumed.':`Request failed (${error.message}). Refresh evidence before retrying.`,true);}
+ }finally{busy=false;controls();}
 }
 function eventFor(revision) {return {eventId:crypto.randomUUID(),routineRevisionId:revision,kind:'arrival',occurredAt:'2026-10-21T19:00:00+05:30',source:'simulated'};}
-$('approve').addEventListener('click',()=>work(async()=>{await api('/api/approve',{routineRevisionId:draft.routine.revisionId,contentHash:draft.contentHash});await refresh();notice('Approved. Your routine is ready; no device action has run.');}));
-$('simulate').addEventListener('click',()=>work(async()=>{pendingEvent??=eventFor(draft.routine.revisionId);const outcome=await api('/api/events',pendingEvent);pendingEvent=null;await refresh();scenario(outcome);notice(outcome.replayed?'Retrieved saved result. No duplicate action.':outcome.decision.actions.some(a=>a.executionStatus==='executed')?'Executed. The simulated porch light is on; the front door remains locked.':'Denied. Inspect the saved policy reason below.');}));
-$('replay').addEventListener('click',()=>work(async()=>{const previous=history.find(d=>d.routineRevisionId==='r1');const outcome=await api('/api/events',previous.eventSnapshot);await refresh();scenario(outcome);notice(outcome.replayed?'Replay verified. No duplicate action. The original decision and receipt were returned.':'Result retrieved. Inspect the saved evidence.');}));
+$('approve').addEventListener('click',()=>work(async()=>{await api('/api/approve',{routineRevisionId:draft.routine.revisionId,contentHash:draft.contentHash});await refresh({probe:false});notice('Approved. Your routine is ready; no device action has run.');}));
+$('simulate').addEventListener('click',()=>work(async()=>{pendingEvent??=eventFor(draft.routine.revisionId);const outcome=await api('/api/events',pendingEvent);pendingEvent=null;await refresh({probe:false});scenario(outcome);notice(outcome.replayed?'Retrieved saved result. No duplicate action.':outcome.decision.actions.some(a=>a.executionStatus==='executed')?'Executed. The simulated porch light is on; the front door remains locked.':'Denied. Inspect the saved policy reason below.');}));
+$('replay').addEventListener('click',()=>work(async()=>{const previous=history.find(d=>d.routineRevisionId==='r1');const outcome=await api('/api/events',previous.eventSnapshot);await refresh({probe:false});scenario(outcome);notice(outcome.replayed?'Replay verified. No duplicate action. The original decision and receipt were returned.':'Result retrieved. Inspect the saved evidence.');}));
 $('why').addEventListener('click',()=>work(async()=>{const saved=await api('/api/decisions/'+encodeURIComponent(currentDecision.eventId));detail(saved);$('evidence').scrollIntoView({behavior:'auto',block:'center'});notice('Explanation retrieved from the original persisted decision.');}));
-$('refresh').addEventListener('click',()=>work(async()=>{await refresh();notice('Refreshed device state and persisted evidence through MCP.');}));
+$('refresh').addEventListener('click',()=>work(async()=>{const missing=await refresh();if(missing.length)gapsNotice(missing);else notice('Refreshed device state and persisted evidence through MCP.');}));
 $('unlock').addEventListener('click',()=>$('unlock-dialog').showModal());
 $('cancel-unlock').addEventListener('click',()=>$('unlock-dialog').close());
 $('confirm-unlock').addEventListener('click',()=>work(async()=>{
  const request=await api('/api/routines/door-denial-r1');
  await api('/api/approve',{routineRevisionId:request.routine.revisionId,contentHash:request.contentHash});
- const outcome=await api('/api/events',eventFor(request.routine.revisionId));$('unlock-dialog').close();await refresh();scenario(outcome);notice('Denied. Door unlocking is forbidden, even with approval. The door remains locked.');
+ const outcome=await api('/api/events',eventFor(request.routine.revisionId));$('unlock-dialog').close();await refresh({probe:false});scenario(outcome);notice('Denied. Door unlocking is forbidden, even with approval. The door remains locked.');
 }));
-work(async()=>{await refresh();notice(draft.approval?'Your approved routine is ready. All devices and events are simulated.':'Review the draft and safety boundaries, then explicitly approve your routine.');});
+work(async()=>{const missing=await refresh();if(missing.length)gapsNotice(missing);else notice(draft.approval?'Your approved routine is ready. All devices and events are simulated.':'Review the draft and safety boundaries, then explicitly approve your routine.');});
 const label=days=>[...days].sort((a,b)=>dayOrder.indexOf(a)-dayOrder.indexOf(b)).map(d=>dayNames[d]).join(', ');
 const candidateDays=()=>[...document.querySelectorAll('#day-picker input:checked')].map(i=>Number(i.value));
 function chip(text,cls){const span=node('span',text);span.className=cls;return span;}
@@ -183,5 +270,5 @@ $('run-preflight').addEventListener('click',()=>work(async()=>{
 $('retrieve-run').addEventListener('click',()=>work(async()=>{const saved=await api('/api/preflight/'+encodeURIComponent(run.runId));showRun(saved,null);notice(`Retrieved saved run ${saved.runId} from PostgreSQL through MCP.`);}));
 $('record').addEventListener('click',()=>work(async()=>{
  const outcome=await api('/api/events',{eventId:crypto.randomUUID(),routineRevisionId:draft.routine.revisionId,kind:'arrival',occurredAt:fixtureEvent,source:'simulated'});
- selectedIncident=outcome.decision.eventId;await refresh();notice('Recorded a simulated Saturday arrival. The incident above is reconstructed from the stored decision.');
+ selectedIncident=outcome.decision.eventId;await refresh({probe:false});notice('Recorded a simulated Saturday arrival. The incident above is reconstructed from the stored decision.');
 }));

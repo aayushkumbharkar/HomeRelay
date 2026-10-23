@@ -26,7 +26,9 @@ const server = createServer((req, res) => { void (async () => {
     if (!req.headers.host || (publicOrigin ? req.headers.host !== new URL(publicOrigin).host : !/^(127\.0\.0\.1|localhost):\d+$/.test(req.headers.host))) { send(res, 403, { error: 'FORBIDDEN' }); return; }
     const path = new URL(req.url!, `http://${req.headers.host}`).pathname;
     if (req.method === 'GET') {
-      if (path === '/healthz') { send(res,200,{status:'ok',service:'web'}); return; }
+      if (path === '/healthz') { send(res,200,{status:'ok',service:'web',checks:'process liveness only; see /api/ready'}); return; }
+      // End-to-end readiness: one read-only MCP call that reaches PostgreSQL. No internal detail is returned.
+      if (path === '/api/ready') { await callMcp('get_home',{}); send(res,200,{status:'ready',checked:'web, MCP, PostgreSQL (read-only)'}); return; }
       const assets: Record<string, [string,string]> = {'/':['index.html','text/html'], '/app.js':['app.js','text/javascript'], '/style.css':['style.css','text/css']};
       if (assets[path]) { const [file, mime] = assets[path]; res.writeHead(200, {'Content-Type': mime+'; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"}); res.end(await readFile('public/'+file)); return; }
       if (path === '/api/home') { send(res,200,await callMcp('get_home',{})); return; }
@@ -48,7 +50,7 @@ const server = createServer((req, res) => { void (async () => {
     else send(res, 404, { error: 'NOT_FOUND' });
   } catch (error) {
     const code = error instanceof DomainError ? error.code : error instanceof z.ZodError ? 'INVALID_INPUT' : 'UNAVAILABLE';
-    const status = { INVALID_INPUT: 400, NOT_FOUND: 404, STALE_REVISION: 409, IDEMPOTENCY_CONFLICT: 409, UNAVAILABLE: 503 }[code];
+    const status = { INVALID_INPUT: 400, NOT_FOUND: 404, STALE_REVISION: 409, IDEMPOTENCY_CONFLICT: 409, UNAVAILABLE: 503, UPSTREAM_REJECTED: 502 }[code];
     send(res, status, { error: code });
   }
 })(); });

@@ -2,199 +2,256 @@
 
 **Replay the incident. Test the fix. Block regressions.**
 
-A counterfactual debugging and regression-testing workbench for MCP-powered
-household automations. Reconstruct a saved decision from its stored evidence, run
-a proposed routine change through the production policy engine as a side-effect-free
-preflight suite, and see which decisions change before anything is approved.
+A counterfactual debugging and regression-testing workbench for MCP-powered household
+automations. Built for the Amazon Developer Hackathon (Alexa+ primary track,
+simulated web-experience path).
 
-HomeRelay is a simulated household for the Alexa+ primary track of the Amazon
-Developer Hackathon. It uses a real self-hosted MCP server, deterministic policy
-and PostgreSQL. There is no runtime LLM: no natural-language parsing or model
-inference. No native Alexa+, Ring, physical lock or Bedrock integration is claimed.
+- **Live app:** https://homerelay-web.onrender.com
+- **Repository:** https://github.com/aayushkumbharkar/HomeRelay
+- **MCP endpoint:** https://homerelay-mcp.onrender.com/mcp (server-held bearer token; not callable from a browser)
 
-**Live:** https://homerelay-web.onrender.com
-**MCP:** https://homerelay-mcp.onrender.com/mcp (server-held bearer authentication)
+> Every device and event is simulated. There is no runtime LLM, no native Alexa+
+> connection, no Bedrock and no physical device. Results come from stored evidence
+> or a deterministic policy engine.
 
-## Try the Time Machine
+## The problem
 
-1. **Incident (01).** The page shows the latest *recorded* Saturday arrival that
-   the weekday-only routine refused, reconstructed from PostgreSQL through the
-   `reconstruct_incident` MCP tool. The recorded reason code identifies the failed
-   check (`OUTSIDE_WEEKDAYS`). Earlier checks are shown as passed and later ones as
-   not reached, each citing a stored snapshot field. If no such decision exists, the
-   panel is labelled **Scenario fixture · not recorded**, with an unverified root
-   cause. **Record simulated Saturday arrival** stores a real (simulated-event)
-   decision after the routine is approved. Selecting any saved decision (07)
-   reconstructs it the same way.
-2. **Candidate fix (02).** The proposal adds Saturday to Mon–Fri, shown as a visual
-   diff. Days can be toggled. **Also request front-door unlock** tries to sneak a
-   prohibited action into the candidate. The candidate exists only in memory.
-3. **Run preflight suite (04).** The web backend calls the `run_preflight` MCP tool.
-   The server evaluates six fixed cases with the production `evaluate()` for both
-   the baseline and the candidate: approved weekday arrival, Saturday arrival,
-   before sunset, missing sunset, unapproved routine and door unlock. The table
-   shows each decision and reason code, whether it changed, and whether a safety
-   invariant was violated. For the Saturday candidate only the Saturday case
-   changes (PASS). With the unlock bypass the suite FAILS with
-   `PROHIBITED_ACTION_REQUESTED`, and every unlock verdict is still
-   `DOOR_UNLOCK_FORBIDDEN`. A candidate that drops an allowed weekday fails with
-   `PREVIOUSLY_ALLOWED_CASE_DENIED`.
-4. Preflight uses a **simulated approval** (`preflight-simulation`, `persisted:
-   false`), reported separately from the routine's real persisted approval. It never
-   saves, approves or activates the candidate. It writes no event, decision, action,
-   approval, routine or device row. It only stores the test run, which **Retrieve
-   saved run** fetches through `get_preflight_run`.
+When a home automation does the wrong thing, a developer needs two answers before
+changing it: *why did it decide that?* and *what else would my fix change?*
+Re-running the automation to find out can execute real actions, and editing the rule
+and hoping can silently weaken a safety boundary. HomeRelay answers both questions
+from recorded evidence and a side-effect-free test suite, before anything is approved.
 
-## Live household (unchanged)
+## How the demo works
 
-1. Review the seeded weekday, after-sunset arrival routine. Approve it explicitly
-   if it is still a draft. Approval itself performs no action.
-2. Choose **Run arrival scenario**. The backend confirms a simulated porch-light
-   action; the door remains locked.
-3. Choose **Try prohibited action**, then approve the separate test request.
-   The policy denies door unlocking even with approval.
-4. **Replay same event** returns the original decision and action receipt.
-5. **Why did this happen?** retrieves stored evidence. Refresh and choose a saved
-   decision; expand **Technical evidence** for complete IDs and snapshots.
+1. **Reconstruct a recorded incident.** The incident panel rebuilds a saved decision
+   (for example, a Saturday arrival the weekday-only routine refused) from the
+   snapshots stored in PostgreSQL. The recorded reason code locates the failed policy
+   check; earlier checks show as passed, later ones as not reached, each citing stored
+   evidence. If no such record exists, the panel is labelled
+   **Scenario fixture · not recorded** and the root cause is marked unverified.
+2. **Propose a candidate.** Toggle the schedule's weekdays (Saturday is pre-selected)
+   and optionally request a front-door unlock to simulate a bypass attempt. The diff
+   shows exactly what changes.
+3. **Run the six-case preflight suite** through the real MCP server
+   (`run_preflight`).
+4. **Compare baseline and candidate** decisions and reason codes for each case.
+5. **Check the safety invariants:** door unlock is always denied, an unapproved
+   routine never executes, missing or early sunset evidence means no action.
+6. **Retrieve saved preflight evidence** (`get_preflight_run`).
 
-This is one shared demonstration household. Other visitors may have already
-approved the seed or turned the light on. A fresh page never claims to have run a
-new scenario. Do not enter personal data. Free Render services can take about a
-minute to wake; if unavailable, wait and select **Refresh evidence**.
+Candidates are **never activated, approved or applied to devices**. Preflight uses a
+labelled *simulated* approval (`preflight-simulation`, never persisted) that is
+reported separately from the routine's real approval. Preflight writes only its own
+test-run record: no event, decision, action, approval, routine or device row.
 
-## Architecture and guarantees
+Below the workbench, the original live household flow still works: explicit approval
+of the exact routine revision, a simulated arrival that turns on the porch light, an
+approved unlock request that is still denied, and idempotent replay of the same event.
+
+## Features
+
+- **Evidence-backed incident reconstruction** from stored decision snapshots
+  (`reconstruct_incident`); nothing is recomputed as historical truth.
+- **Counterfactual policy evaluation** with the production `evaluate()` function,
+  without the event-processing path.
+- **Six fixed preflight cases:** approved weekday arrival after sunset, Saturday
+  arrival after sunset, arrival before sunset, missing sunset evidence, unapproved
+  routine, prohibited door unlock.
+- **Baseline-versus-candidate comparison** with change classification (unchanged,
+  newly allowed, newly denied, reason changed).
+- **Safety invariant checking.** A candidate requesting a prohibited action, or one
+  that denies a previously allowed case, fails the suite.
+- **Persistent saved preflight runs** (insert-only table, additive checksummed migration).
+- **Official MCP client and server** (TypeScript SDK v2) over Streamable HTTP;
+  negotiated protocol **2025-11-25** in tests.
+- **PostgreSQL persistence and event idempotency.** One transaction stores the event,
+  decision snapshots, simulated device change and action receipt; unique keys prevent
+  duplicate actions across retries, ten concurrent replays and restarts.
+- **Honest handling of service failures.** Each section loads independently, shows
+  only data actually retrieved, and offers its own Retry; wake-ups are retried a
+  bounded number of times; configuration errors are reported, not retried.
+
+## Architecture
 
 ```text
-Browser → Node web backend → official MCP client → HTTPS Streamable HTTP
-        → separate official-SDK MCP server → deterministic rules → PostgreSQL
+Browser ──► Node web backend ──► official MCP client
+                                      │  HTTPS Streamable HTTP + bearer token
+                                      ▼
+                         self-hosted MCP server (official SDK)
+                                      │
+                        ┌─────────────┴──────────────┐
+                        ▼                            ▼
+          deterministic policy engine          PostgreSQL
 ```
 
-The browser contains no MCP credential, database connection or policy engine.
-The web backend has no database or policy imports and cannot bypass an MCP outage.
-SDK pins: client/server 2.3.1, Node adapter 2.1.1. The executed transport test
-negotiates MCP **2025-11-25**. The SDK owns protocol serialization and negotiation.
+The browser holds no MCP token, database connection or policy code, and cannot
+bypass the web backend. The web backend has no database or policy imports; if MCP is
+down it reports the outage and never falls back to local logic. Mutating routes
+require same-origin requests and a CSRF token; MCP checks Host/Origin and the bearer
+token and caps request bodies at 16 KiB.
 
-Approval is bound to an immutable revision and content hash. Policy checks the
-approval, current revision, event kind, local weekday and dated sunset fixture.
-Door unlocking is always denied. Missing sunset evidence fails closed. The demo
-simulates 21 October 2026 at 19:00 Asia/Kolkata with sunset at 18:00.
+| Route | Purpose |
+| --- | --- |
+| `GET /healthz` (web) | Process liveness only, and says so |
+| `GET /api/ready` (web) | End-to-end read-only check: web → MCP → PostgreSQL |
+| `GET /healthz` (MCP) | MCP process plus a PostgreSQL query |
 
-One PostgreSQL transaction stores the event, immutable decision snapshots, allowed
-action receipt and simulated device update. Unique household/event and
-decision/action constraints prevent duplicate commits, including ten simultaneous
-replays. Reusing an ID with different input returns 409. Replays return the old
-result, even if rules or approvals later change. A denied action has no receipt.
-These guarantees cover the transactional simulator, not external hardware delivery.
+More detail: [architecture](docs/architecture.md), [acceptance tests](docs/acceptance-tests.md),
+[risks](docs/risks.md).
 
-## Local setup
+## Quick start (local)
 
-Prerequisites: npm with bootstrap Node >=20, Docker Desktop, and Microsoft Edge
-for the browser test. `npm ci` installs a pinned project Node 24.22.0 runtime.
-Run from the repository root:
+**Prerequisites:** npm with a bootstrap Node.js 20 or newer, Docker Desktop, and
+Microsoft Edge (used by the browser tests). `npm ci` installs the project's pinned
+Node.js 24.22.0, which the npm scripts use.
 
 ```powershell
 npm ci
 Copy-Item .env.example .env
 ```
 
-Keep an existing `.env`. Replace placeholders with random secrets; use the same
-PostgreSQL password in POSTGRES_PASSWORD and both connection URLs. Never commit it.
+Edit `.env`: replace every placeholder with a random secret, and use the same
+PostgreSQL password in `POSTGRES_PASSWORD`, `DATABASE_URL` and `TEST_DATABASE_URL`.
+`MCP_TOKEN` must be at least 32 characters. Never commit `.env`. If you already have
+a `.env`, keep it.
+
+Start PostgreSQL 18 (loopback port 15432, named volume `homerelay-data`), then create
+the test database **once**:
 
 ```powershell
 docker compose up -d --wait
 docker compose exec -T db psql -U homerelay -d homerelay -c 'CREATE DATABASE homerelay_test;'
-npm run db:migrate
-npm run db:seed
-npm run build
 ```
 
-Create the test database only once. PostgreSQL runs on loopback port 15432 with a
-named volume; existing host PostgreSQL is untouched. Another PostgreSQL instance
-may be used by configuring the URLs. The test database name must end in `_test`.
-Migrations are transactional and checksummed under an advisory lock. Seeds preserve
-existing approvals, decisions and device state. Never delete the volume to restart.
+The test database name must end in `_test`; tests refuse anything else and work in
+disposable per-test schemas inside it, so they never touch your demo data.
 
-In separate terminals:
+Apply migrations and seed the simulated household (both are safe to repeat: migrations
+are checksummed under an advisory lock, and the seed never resets existing approvals,
+decisions or device state):
 
 ```powershell
-npm run start:mcp
-npm run start:web
+npm run db:migrate
+npm run db:seed
 ```
 
-Open http://127.0.0.1:3000. Local MCP listens on http://127.0.0.1:3001/mcp.
+Run the two services in separate terminals:
 
-## Environment variables
+```powershell
+npm run start:mcp   # http://127.0.0.1:3001/mcp
+npm run start:web   # http://127.0.0.1:3000
+```
+
+Open http://127.0.0.1:3000. If `npm run start:mcp` prints *MCP startup failed; check
+database, migrations, token and port*, make sure PostgreSQL is running, run
+`npm run db:migrate`, and check `MCP_TOKEN` length. To restart cleanly, stop and start the services or
+`docker compose restart db`; **do not delete the database volume**, which holds the
+household's history.
+
+### Environment variables
 
 | Name | Purpose |
 | --- | --- |
-| POSTGRES_PASSWORD | Local Docker database password; secret |
-| DATABASE_URL | PostgreSQL connection; MCP/migration/seed only; secret |
-| TEST_DATABASE_URL | Dedicated test DB ending `_test`; secret |
-| MCP_TOKEN | At least 32 characters; shared only between web and MCP; secret |
-| MCP_URL | Full local MCP endpoint, including `/mcp` |
-| MCP_BASE_URL | Render public MCP service URL; client appends `/mcp` |
-| MCP_PORT / WEB_PORT | Local ports; defaults 3001 / 3000 |
-| PORT | Render-assigned listening port; overrides local port |
-| BIND_HOST | Local default 127.0.0.1; Render 0.0.0.0 |
-| RENDER_EXTERNAL_URL | Render-provided exact public origin for Host/Origin checks |
-| NODE_VERSION | Render runtime pin 24.22.0 |
-| SMOKE_URL | Explicit HTTPS target for hosted verification scripts |
+| `POSTGRES_PASSWORD` | Local Docker database password (secret) |
+| `DATABASE_URL` | PostgreSQL connection for MCP, migrations and seed (secret) |
+| `TEST_DATABASE_URL` | Dedicated test database; name must end in `_test` (secret) |
+| `MCP_TOKEN` | Shared web↔MCP bearer secret, at least 32 characters (secret) |
+| `MCP_URL` | Full local MCP endpoint including `/mcp` |
+| `MCP_PORT` / `WEB_PORT` | Local ports, defaults 3001 / 3000 |
+| `MCP_BASE_URL` | Render: public MCP service URL; the client appends `/mcp` |
+| `PORT`, `BIND_HOST`, `RENDER_EXTERNAL_URL`, `NODE_VERSION` | Render runtime settings, see [render.yaml](render.yaml) |
+| `SMOKE_URL` | Explicit HTTPS target for the hosted verification scripts |
 
-## Tests
+## Testing
 
 ```powershell
-npm run test:unit
-npm run test:integration
-npm run test:e2e
+npm run test:unit         # 20 tests
+npm run test:integration  # 12 tests
+npm run test:e2e          # 7 tests (real Microsoft Edge)
 npm run typecheck
 git diff --check
 ```
 
-Unit tests cover deterministic policy, strict schemas, the preflight suite (Saturday
-changes only the Saturday case; daytime, missing-sunset, unapproved and unlock cases
-stay denied; unlock bypass and weekday removal fail), that the exported check order
-matches `evaluate()` precedence, and incident reconstruction from stored reason codes.
-`migration.test.ts` upgrades a populated v1 database and proves MCP refuses to start
-on an unmigrated schema. `preflight.test.ts` runs the new tools through real web,
-MCP and PostgreSQL processes. It shows that seven side-effect tables are unchanged
-and that a saved run survives a restart. Integration tests use
-real PostgreSQL and separate HTTP MCP/web processes, including rollback, races,
-input/access boundaries, restart, outage, health and hosting configuration.
-Browser tests use real services in a disposable schema, exercise keyboard focus,
-approval, denial, replay, refresh, neutral page state, mobile layout, outage and
-recovery. They never reset the demonstration DB. Configure the browser channel in
-`tests/e2e/demo.test.ts` if Microsoft Edge is unavailable on your OS.
+Counts are from the latest executed run, recorded in [verification](docs/verification.md).
 
-`npm run test:mcp` is a database-independent official-SDK transport proof.
-No test silently skips missing services. See [actual results](docs/verification.md).
+- **Unit:** every policy reason code and its precedence (pinned to the exported
+  check order), strict schemas rejecting forged `approved` fields, the preflight
+  suite (Saturday changes only the Saturday case; daytime, missing-sunset,
+  unapproved and unlock cases stay denied; unlock bypass and weekday removal fail),
+  and incident reconstruction from stored reason codes.
+- **Integration** (real PostgreSQL, separate web and MCP processes over TCP, no
+  protocol mocks): approval, execution and denial; ten concurrent duplicate events
+  committing one action; idempotency conflicts; transaction rollback; restart
+  recovery; MCP outage with no fallback; input, origin, token and body-size
+  boundaries; hosted configuration; migration upgrade of a populated database and
+  refusal to start on an old schema; preflight leaving seven domain tables unchanged
+  and surviving restart; readiness distinguishing an outage (503) from rejected MCP
+  credentials (502) without exposing secrets.
+- **Browser** (real Edge against real services in a disposable schema): the full
+  household flow, keyboard focus and dialogs; the Time Machine workflow and its
+  first-viewport layout at 1440×1000 and 390×844; one failed read (including a non-JSON
+  HTML error page) leaving other sections usable with keyboard-operable Retry; MCP down
+  on first load then recovering without a reload; bounded retries that stop with a
+  clear message; configuration errors without retry loops; overlapping refreshes
+  collapsing to one; and actions appearing successful only after the backend confirms,
+  with a retry reusing the same event ID.
 
-## Render
+`npm run test:mcp` is a database-free official-SDK transport proof. No test silently
+skips a missing service: without `TEST_DATABASE_URL` (ending in `_test`) or a running
+PostgreSQL, the database-backed tests fail.
 
-[render.yaml](render.yaml) provisions two free Node web services and PostgreSQL 18
-in Oregon. The MCP process migrates/seeds before listening and stops on startup
-failure. `/healthz` checks MCP database connectivity; the web health check is
-process liveness, while the UI checks the full chain. Free services cannot receive
-private traffic, so web calls public HTTPS MCP with a generated server-only token.
-The database connection is internal; external PostgreSQL access is blocked.
+## Live demo and troubleshooting
 
-See [deployment details](docs/render-deployment.md). PostgreSQL free-plan data
-expires after 30 days; upgrade or export before expiry to retain evidence. Free
-services sleep and have shared usage limits. This is not production availability.
+The hosted demo runs on Render's free tier, where idle services sleep. The first
+visit after a quiet period can take **about a minute** while the MCP service wakes.
 
-## Limits and submission evidence
+| You see | What it means | What to do |
+| --- | --- | --- |
+| **Connecting… / MCP service may be waking (attempt n of 8)** | The page is checking web → MCP → PostgreSQL, one request at a time, with backoff | Wait; it recovers by itself without reloading |
+| A section says **Unavailable**, **Not loaded** or **Stale** with a **Retry** button | That read failed; other sections show only data actually retrieved | Select that section's Retry |
+| **Incident evidence unavailable** | The incident or saved history could not be read, so no incident is shown rather than a guess | Retry the incident, or Refresh evidence |
+| **The MCP service is unavailable: could not reach it after 8 attempts** | Retries stopped (~1 minute of backoff); likely still waking or a real outage | Select **Refresh evidence** once; if it fails again, report it |
+| **Configuration problem** | The web service's MCP credentials were rejected; this is a deployment error, not a wake-up | Retrying will not help; report it |
 
-Seeded drafts only: no arbitrary natural-language parser, editing, model inference,
-user identity, private household isolation, live sunset source or hardware adapter.
-Preflight cases are a fixed, server-defined suite on dated simulation fixtures (sunset
-fixtures exist only for 21 and 24 October 2026). Candidates can change weekdays and
-actions only. A passing preflight is not an approval: activating a candidate would
-need revision creation and explicit approval, which are not implemented. Saved
-preflight runs are public in this shared demo and are not rate-limited.
-All events and devices are explicitly simulated. No AWS mini-challenge claim.
+A transient cold start recovers after one wait. A failure that persists after a
+manual retry points to a deployment, database or configuration problem and should be
+reported rather than waited out.
 
-- [Verification](docs/verification.md) and [acceptance matrix](docs/acceptance-tests.md)
-- [Architecture](docs/architecture.md) and [risks](docs/risks.md)
-- [Demo script](docs/demo-script.md) and [product feedback](docs/product-feedback.md)
+This is **one shared, simulated household**: other visitors may already have approved
+the routine or turned the light on, and the incident shown may have been recorded by an
+earlier visitor or verification run. Do not enter personal information.
+
+Deployment details: [Render deployment](docs/render-deployment.md) and [render.yaml](render.yaml).
+
+## Honest limitations
+
+- No runtime LLM and no natural-language parsing; routines are seeded.
+- No native Alexa+ device connection; this follows the hackathon's simulated
+  web-experience path with a self-hosted MCP server.
+- No physical Ring, smart-lock or other device control.
+- No Amazon Bedrock integration and no AWS runtime API.
+- The preflight suite is a fixed set of six cases on dated simulation fixtures
+  (sunset fixtures exist for 21 and 24 October 2026 only), and candidates can change
+  only weekdays and actions.
+- A passing preflight does not activate the candidate; turning it into a new routine
+  revision for explicit approval is not implemented.
+- No production identity or multi-user household isolation; saved preflight runs are
+  public and not rate-limited in the shared demo.
+- Free Render services sleep and the free PostgreSQL database has a limited lifetime
+  (30 days), with no backups.
+
+No AWS mini-challenge eligibility and no Amazon API feedback are claimed.
+
+## Documentation
+
+- [Verification ledger](docs/verification.md): every executed command and result
+- [Acceptance tests](docs/acceptance-tests.md) and [architecture](docs/architecture.md)
+- [Demo script, as recorded](docs/demo-script.md)
+- [Product feedback and friction log](docs/product-feedback.md)
 - [Submission draft](docs/submission.md)
+
+A public demo video link will be added here once it is published and its playback
+verified.
 
 MIT licensed. See [LICENSE](LICENSE).

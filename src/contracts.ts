@@ -75,7 +75,7 @@ export const IncidentSchema = z.strictObject({
     actionId: z.uuid().nullable(), checks: z.array(z.strictObject({ reasonCode: Reason, check: z.string(),
       evidence: z.string(), status: z.enum(['passed', 'failed', 'not_reached']) })) }))
 });
-export const ErrorCode = z.enum(['INVALID_INPUT', 'NOT_FOUND', 'STALE_REVISION', 'IDEMPOTENCY_CONFLICT', 'UNAVAILABLE']);
+export const ErrorCode = z.enum(['INVALID_INPUT', 'NOT_FOUND', 'STALE_REVISION', 'IDEMPOTENCY_CONFLICT', 'UNAVAILABLE', 'UPSTREAM_REJECTED']);
 export type Code = z.infer<typeof ErrorCode>;
 export class DomainError extends Error { constructor(public code: Code) { super(code); } }
 export type HomeEvent = z.infer<typeof EventSchema>;

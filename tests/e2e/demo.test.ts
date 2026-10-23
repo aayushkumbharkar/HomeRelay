@@ -14,6 +14,9 @@ test('browser approval, execution, denial, replay, refresh, mobile and MCP outag
  const page=await browser.newPage({viewport:{width:1440,height:1000}});
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.emulateMedia({reducedMotion:'reduce'});
+ // Fake page clock so the bounded MCP retry schedule can be fast-forwarded during the outage step.
+ await page.clock.install();
+ const exhaustRetries=async()=>{for(let i=0;i<10;i++){await page.clock.fastForward(30000);await page.waitForTimeout(150);}};
  await page.goto(web.url);
  await page.keyboard.press('Tab');
  await expect(page.getByRole('link',{name:'Skip to workspace'})).toBeFocused();
@@ -56,11 +59,14 @@ test('browser approval, execution, denial, replay, refresh, mobile and MCP outag
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.screenshot({path:'test-results/mobile.png',fullPage:true});
  await mcp.stop();await page.getByRole('button',{name:'Refresh evidence',exact:true}).click();
+ await expect(page.locator('#notice')).toContainText('waking');
+ await exhaustRetries();
  await expect(page.locator('#notice')).toContainText('unavailable');
  await expect(page.getByRole('button',{name:'Run arrival scenario',exact:true})).toBeDisabled();
  await page.screenshot({path:'test-results/outage.png',fullPage:true});
  // A cold load during an outage must not leave the incident panel claiming it is still loading.
  await page.reload();
+ await exhaustRetries();
  await expect(page.locator('#notice')).toContainText('unavailable');
  await expect(page.locator('#incident-basis')).toHaveText('Unavailable');
  await expect(page.locator('#incident')).toContainText('No incident is shown');

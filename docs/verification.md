@@ -419,3 +419,37 @@ H.264/AAC), synthesized English narration. ffprobe duration 153.67s (2:34). Firs
 attempt rejected after frame review (page rendered top-left with padding). Upload,
 public URL and anonymous playback: NOT YET DONE (requires the account holder).
 Devpost submission: NOT YET DONE.
+
+## Live loading failure: diagnosis and fix — 2026-10-23
+
+Reproduction (read-only, live, 12:51 IST): web /healthz 200 in 0.8s and /api/session
+200, but /api/routines/r1, /api/home, /api/history all 503 {"error":"UNAVAILABLE"}
+(application/json) in 0.4-0.9s. MCP /healthz took 21.5s on first call, then 0.8s;
+POST /mcp without a token returned 401 (auth enforced). With MCP awake the same three
+reads returned 200 JSON in 0.5-1.1s. A probe after 17 minutes idle (13:09) showed a
+sleeping MCP holds a request 22.9s at Render's edge before answering.
+Root cause: (1) transient trigger, free-tier MCP asleep; no deployment, database,
+migration or credential fault found; (2) defect, refresh() used Promise.all over
+session+routine+home+history, so any rejection skipped every later UI update and left
+all sections at Loading/Unknown with no automatic recovery; api() also called
+response.json() unconditionally (an HTML error page would raise SyntaxError); and
+callMcp mapped MCP 401/403 to UNAVAILABLE, making a token mismatch look like a wake-up.
+Not observed: why the Render-to-Render call failed in <1s rather than at the 5s client
+timeout (Render runtime logs not accessible in this session).
+
+Fix: web GET /api/ready (one read-only web->MCP->PostgreSQL call; body has no token or
+internal URL); /healthz states it checks process liveness only; MCP 401/403 ->
+UPSTREAM_REJECTED (502). Frontend: session first, then one readiness probe at a time
+with bounded backoff (8 attempts, 2-20s delays, then stop with a manual retry); routine,
+home, history and incident load independently; failed sections show Unavailable / Not
+loaded (never assumed states) with a per-section Retry; previously loaded data marked
+Stale with its retrieval time; non-JSON responses handled as service errors; 20s
+request timeout; refreshes cannot overlap; mutations are never auto-retried and the
+arrival retry reuses its pending event ID.
+
+TDD (executed): intended reds: readiness 404; one HTML-503 read left the routine at
+"Loading" (the reported symptom); no connecting state; zero readiness probes; no
+configuration message. Existing demo outage step updated to assert the new waking state
+and fast-forward the bounded retries (all prior assertions kept).
+Green: unit 20/20; integration 12/12 (MCP 2025-11-25); e2e 7/7; typecheck 0;
+git diff --check 0.
