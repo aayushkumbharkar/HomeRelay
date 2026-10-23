@@ -6,9 +6,10 @@ A counterfactual debugging and regression-testing workbench for MCP-powered hous
 automations. Built for the Amazon Developer Hackathon (Alexa+ primary track,
 simulated web-experience path).
 
-- **Live app:** https://homerelay-web.onrender.com
+- **Live app:** https://homerelay-opal.vercel.app (Vercel + Neon PostgreSQL)
 - **Repository:** https://github.com/aayushkumbharkar/HomeRelay
-- **MCP endpoint:** https://homerelay-mcp.onrender.com/mcp (server-held bearer token; not callable from a browser)
+- **MCP endpoint:** https://homerelay-opal.vercel.app/mcp (Streamable HTTP, server-held bearer token; requests without it get 401)
+- **Fallback:** the earlier Render deployment, https://homerelay-web.onrender.com, is kept only as a rollback (see [why it was replaced](docs/vercel-deployment.md#why-render-was-replaced))
 
 > Every device and event is simulated. There is no runtime LLM, no native Alexa+
 > connection, no Bedrock and no physical device. Results come from stored evidence
@@ -75,15 +76,23 @@ approved unlock request that is still denied, and idempotent replay of the same 
 ## Architecture
 
 ```text
-Browser ──► Node web backend ──► official MCP client
-                                      │  HTTPS Streamable HTTP + bearer token
-                                      ▼
-                         self-hosted MCP server (official SDK)
-                                      │
-                        ┌─────────────┴──────────────┐
-                        ▼                            ▼
-          deterministic policy engine          PostgreSQL
+Browser ──► web API (Node handler) ──► official MCP client
+                                            │  HTTPS Streamable HTTP + bearer token
+                                            ▼
+                     stateless MCP endpoint (official SDK, fresh server per request)
+                                            │
+                              ┌─────────────┴──────────────┐
+                              ▼                            ▼
+                deterministic policy engine          PostgreSQL
 ```
+
+Hosted, both handlers run in **one Vercel deployment** as two Node.js 24 functions,
+`api/web` and `api/mcp`, with static assets on Vercel's CDN and data in **Neon
+PostgreSQL 18**. The web function still calls the MCP function over HTTPS with the
+official client; it never touches the database or policy itself. Locally, the same
+handlers run as two Node listeners. All persistent state (approvals, events,
+decisions, action receipts, simulated devices, preflight runs) lives in PostgreSQL;
+nothing is kept in function memory or local files.
 
 The browser holds no MCP token, database connection or policy code, and cannot
 bypass the web backend. The web backend has no database or policy imports; if MCP is
@@ -95,7 +104,7 @@ token and caps request bodies at 16 KiB.
 | --- | --- |
 | `GET /healthz` (web) | Process liveness only, and says so |
 | `GET /api/ready` (web) | End-to-end read-only check: web → MCP → PostgreSQL |
-| `GET /healthz` (MCP) | MCP process plus a PostgreSQL query |
+| `GET /healthz` (local MCP listener) | MCP process plus a PostgreSQL query |
 
 More detail: [architecture](docs/architecture.md), [acceptance tests](docs/acceptance-tests.md),
 [risks](docs/risks.md).
@@ -159,15 +168,29 @@ household's history.
 | `MCP_TOKEN` | Shared web↔MCP bearer secret, at least 32 characters (secret) |
 | `MCP_URL` | Full local MCP endpoint including `/mcp` |
 | `MCP_PORT` / `WEB_PORT` | Local ports, defaults 3001 / 3000 |
-| `MCP_BASE_URL` | Render: public MCP service URL; the client appends `/mcp` |
-| `PORT`, `BIND_HOST`, `RENDER_EXTERNAL_URL`, `NODE_VERSION` | Render runtime settings, see [render.yaml](render.yaml) |
+| `CSRF_SECRET` | Vercel only: HMAC key so any function instance accepts the CSRF token (secret) |
+| `PG_POOL_MAX` / `PG_CONNECT_TIMEOUT_MS` / `MCP_TIMEOUT_MS` | Optional tuning; defaults 12 / 2000 ms / 5000 ms. Vercel uses 2 / 15000 / 20000 |
+| `PUBLIC_HOSTS` | Optional extra allowed hosts (comma-separated); Vercel's own hosts are added automatically |
+| `MCP_BASE_URL`, `PORT`, `BIND_HOST`, `RENDER_EXTERNAL_URL`, `NODE_VERSION` | Render fallback settings, see [render.yaml](render.yaml) |
 | `SMOKE_URL` | Explicit HTTPS target for the hosted verification scripts |
+
+## Deploying to Vercel + Neon
+
+`npm run build:vercel` compiles TypeScript and writes Vercel's Build Output API
+(`.vercel/output`: static assets plus the `api/web` and `api/mcp` functions with only
+production dependencies). [vercel.json](vercel.json) runs it on Vercel, and
+[.vercelignore](.vercelignore) keeps `.env*`, `.local/` and build artefacts out of
+uploads. Migrations are an explicit step, never run per request: point a git-ignored
+env file at the Neon **direct** connection string and run
+`node --env-file=<file> dist/scripts/migrate.js`, then `dist/scripts/seed.js`.
+Environment variables, the Neon timeout settings and why the direct (not pooled)
+endpoint is used are in [Vercel deployment](docs/vercel-deployment.md).
 
 ## Testing
 
 ```powershell
 npm run test:unit         # 20 tests
-npm run test:integration  # 12 tests
+npm run test:integration  # 13 tests
 npm run test:e2e          # 7 tests (real Microsoft Edge)
 npm run typecheck
 git diff --check
@@ -187,7 +210,9 @@ Counts are from the latest executed run, recorded in [verification](docs/verific
   boundaries; hosted configuration; migration upgrade of a populated database and
   refusal to start on an old schema; preflight leaving seven domain tables unchanged
   and surviving restart; readiness distinguishing an outage (503) from rejected MCP
-  credentials (502) without exposing secrets.
+  credentials (502) without exposing secrets; and the packaged Vercel functions
+  (`npm run build:vercel` output) running the whole workflow, stateless across two
+  instances, with an unreachable database failing fast.
 - **Browser** (real Edge against real services in a disposable schema): the full
   household flow, keyboard focus and dialogs; the Time Machine workflow and its
   first-viewport layout at 1440×1000 and 390×844; one failed read (including a non-JSON
@@ -203,8 +228,13 @@ PostgreSQL, the database-backed tests fail.
 
 ## Live demo and troubleshooting
 
-The hosted demo runs on Render's free tier, where idle services sleep. The first
-visit after a quiet period can take **about a minute** while the MCP service wakes.
+The hosted demo runs on free plans: Vercel functions start cold after idle periods,
+and Neon's free compute suspends when idle and resumes on the next query. The first
+request after a quiet period is therefore slower than later ones; the page waits for
+one end-to-end readiness check before loading sections, and retries it with backoff.
+Measured on 23 October 2026 with Neon confirmed suspended: the first readiness check
+took about 2.3 s and a warm one about 1 s; a full page load showed every section in
+under 5 s without needing a retry. These are single measurements, not guarantees.
 
 | You see | What it means | What to do |
 | --- | --- | --- |
@@ -213,6 +243,7 @@ visit after a quiet period can take **about a minute** while the MCP service wak
 | **Incident evidence unavailable** | The incident or saved history could not be read, so no incident is shown rather than a guess | Retry the incident, or Refresh evidence |
 | **The MCP service is unavailable: could not reach it after 8 attempts** | Retries stopped (~1 minute of backoff); likely still waking or a real outage | Select **Refresh evidence** once; if it fails again, report it |
 | **Configuration problem** | The web service's MCP credentials were rejected; this is a deployment error, not a wake-up | Retrying will not help; report it |
+| Sections **Unavailable** while the connection works | The database is unreachable; reads fail closed with `UNAVAILABLE` and nothing is invented | Retry once; if it persists, report it |
 
 A transient cold start recovers after one wait. A failure that persists after a
 manual retry points to a deployment, database or configuration problem and should be
@@ -222,7 +253,8 @@ This is **one shared, simulated household**: other visitors may already have app
 the routine or turned the light on, and the incident shown may have been recorded by an
 earlier visitor or verification run. Do not enter personal information.
 
-Deployment details: [Render deployment](docs/render-deployment.md) and [render.yaml](render.yaml).
+Deployment details: [Vercel + Neon](docs/vercel-deployment.md) (current) and
+[Render](docs/render-deployment.md) (fallback).
 
 ## Honest limitations
 
@@ -238,8 +270,12 @@ Deployment details: [Render deployment](docs/render-deployment.md) and [render.y
   revision for explicit approval is not implemented.
 - No production identity or multi-user household isolation; saved preflight runs are
   public and not rate-limited in the shared demo.
-- Free Render services sleep and the free PostgreSQL database has a limited lifetime
-  (30 days), with no backups.
+- Hosting uses free plans (Vercel Hobby, Neon Free): cold starts after idle periods
+  are not eliminated. Vercel's Hobby plan is limited to personal, non-commercial use;
+  whether a cash-prize hackathon entry qualifies is ambiguous and has not been
+  confirmed with Vercel (see [Vercel deployment](docs/vercel-deployment.md#eligibility-and-cost)).
+- The Render fallback's free PostgreSQL database has a limited lifetime (30 days) with
+  no backups.
 
 No AWS mini-challenge eligibility and no Amazon API feedback are claimed.
 

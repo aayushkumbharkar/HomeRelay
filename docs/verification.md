@@ -468,3 +468,80 @@ byte-identical to HEAD at ceab69b063f225ff5f0c7f63f03a42516980c4ce.
   so the services stayed awake. Live wake-up recovery is therefore NOT verified; it is
   verified locally (e2e: MCP stopped on first load, then started; recovery without
   reload) and by the bounded-retry e2e test.
+
+## Vercel + Neon migration — 2026-10-23
+
+Root cause of the repeated Render "MCP unavailable": with both free services asleep,
+a read-only experiment called only web /api/ready (MCP untouched by anything else)
+30 times from 17:06:43 to 17:23:10 IST. The first call took 22.2 s (web waking) and
+returned 503; all 29 later calls returned 503 {"error":"UNAVAILABLE"} in 0.38-1.07 s.
+MCP never became ready from web-originated traffic alone, so browser retries could not
+succeed. (A 13-minute gap in the timestamps is this machine sleeping.)
+
+Eligibility: Vercel Hobby is personal/non-commercial; fair-use guidelines count
+"financial gain of anyone involved". Ambiguous for a cash-prize hackathon; flagged to
+the owner, who chose to proceed. Not confirmed with Vercel. No paid plan or resource
+created: Vercel account on Hobby; Neon account plan "free", no payment source.
+
+Architecture: one Vercel project (homerelay, iad1) built with Build Output API v3:
+static assets, api/web and api/mcp Node.js 24 functions; Neon Free PostgreSQL 18
+(project curly-lake-24133799, aws-us-east-1, direct endpoint, TLS verify-full).
+Git integration not connected; deploys are explicit CLI actions from local commit
+8d17975 (working tree also contained the owner's uncommitted scripts/hosted-browser.mjs
+and scripts/record-demo.mjs, unused by the build; .vercelignore excluded .env*, .local/,
+.agents/, test-results/, dist/, .vercel/, node_modules/).
+
+TDD: tests/integration/vercel-output.test.ts first failed because
+scripts/build-vercel.mjs did not exist (weak red: missing feature, not a behaviour
+assertion). Then failed on ECONNREFUSED 15432 (Docker Desktop stopped; infrastructure,
+restarted without data loss). Then failed on my wrong expectation (APPROVAL_REQUIRED
+for an unapproved unlock; policy correctly returns DOOR_UNLOCK_FORBIDDEN first); fixed
+the expectation. Green: packaged functions negotiate MCP 2025-11-25, CSRF token from
+one instance accepted by another, replay idempotent across instances, saved run read by
+another instance, unlock bypass rejected, unreachable DB -> 503 within 15 s.
+Regression after refactor: unit 20/20, integration 13/13, typecheck 0. One e2e run
+under the 1200 s wrapper reported 3 failures after a 55-minute duration for ~30 s of
+tests (machine slept); not reproducible: e2e 7/7 in a foreground rerun.
+
+Neon: migrations 1-2 applied via the direct endpoint, second run verified checksums,
+seed applied. Pooled endpoint (PgBouncer) reported statement_timeout=0 and
+lock_timeout=0 even after ALTER DATABASE neondb SET statement_timeout='5s',
+lock_timeout='5s'; the direct endpoint applies 5s/5s. DATABASE_URL switched to the
+direct endpoint to keep the guards (pool max 2 per instance).
+
+Hosted checks on https://homerelay-opal.vercel.app (Edge browser, real network):
+- Official SDK client to /mcp: protocol 2025-11-25, server homerelay, 9 tools all with
+  output schemas, structured get_home result, forged input rejected; no token 401,
+  wrong token 401, forged Origin 403.
+- Release gates (UI workflow; simulated demo data written: approval of r1, labelled
+  Saturday arrival, 2 preflight runs, arrival, approved-unlock denial, replay): first
+  load showed "Awaiting approval", "0 saved decisions", "Scenario fixture · not
+  recorded" (nothing invented); incident reconstructed OUTSIDE_WEEKDAYS from Neon with
+  no receipt; preflight PASS, only Saturday changed, 5 invariants held; unlock candidate
+  FAIL, every unlock DENY DOOR_UNLOCK_FORBIDDEN; saved run retrieved by a separate
+  request; arrival executed with door locked; approved unlock denied; replay no
+  duplicate; reload persisted (3 decisions); 390px no overflow; 0 JS errors.
+- Failure injection on two throwaway protected previews (removed afterwards):
+  unreachable DATABASE_URL -> /api/ready and /api/home {"error":"UNAVAILABLE"}, web
+  liveness still ok (and proves preview web->MCP passed protection via the server-side
+  automation bypass); wrong MCP_TOKEN against production MCP -> {"error":
+  "UPSTREAM_REJECTED"}.
+- Security: production domain public (200); deployment URL unauthenticated 302 to
+  Vercel login; served app.js/index.html/style.css contain no secrets, tokens,
+  connection strings or bypass header (only the UI label "bypass attempt"); generated
+  secrets absent from tracked files; no crons, intervals or keep-awake pings.
+- Cold start. A first job (15 + 7 min idle) measured /api/ready 200 in 0.67 s, warm
+  0.44 s, and a full browser load with all sections by 4.1 s, but its Neon state checks
+  failed (neonctl 8.11 has no `endpoints` command), so Neon suspension was NOT
+  confirmed for those numbers. Re-measured with the Neon control-plane API
+  (GET /projects/{id}/endpoints, which does not wake compute): compute active (last
+  active 13:42:28Z) -> idle by 13:47:52Z (default suspend). First /api/ready after
+  confirmed idle: 200 in 2.26 s (compute then active); warm: 200 in 0.98 s. After a
+  second confirmed idle (13:53:32Z): full browser load, first settled value per section
+  - connection 2.8 s, history 3.4 s, devices 4.2 s, routine 4.4 s, recorded incident
+  4.7 s; /api/ready 1.94 s; no retry needed, no section stuck, subsequent refresh OK,
+  0 JS errors, read-only. Vercel function cold state was not directly observed.
+- Final release checks (npm scripts, executed after live measurements): test:unit
+  20/20; test:integration 13/13 (MCP 2025-11-25 from listener and packaged function);
+  test:e2e 7/7 (comparison rows 934 px; 967 px with long root cause); typecheck 0;
+  git diff --check 0.
