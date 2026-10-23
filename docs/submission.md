@@ -91,8 +91,8 @@ Would use again for a prototype, with availability/retention planning for produc
 
 Amazon tools/APIs/SDKs: no Amazon runtime API or SDK was invoked. This entry follows
 the permitted Alexa+ simulation/MCP path. No invented Amazon onboarding feedback.
-Development used Codex, installed Superpowers and UI design guidance; code and tests
-were reviewed and executed. AI assistance is disclosed rather than represented as
+Development used AI coding assistants (Codex and Claude Code), installed Superpowers
+and UI design guidance; code and tests were reviewed and executed. AI assistance is disclosed rather than represented as
 manual-only development.
 
 ## Limitations for judges

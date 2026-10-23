@@ -31,7 +31,8 @@ These are developer observations from executed work, not user interviews.
 5. Railway CLI was unauthorized. The user selected Render; Railway was abandoned.
 6. Render browser required user sign-in. Account menu then confirmed the specified
    email before any resource creation. Existing Git provider was aayushkumbharkar;
-   the verified code was pushed to a private HomeRelay repository under that owner.
+   the verified code was pushed to the HomeRelay repository under that owner (since
+   made public; visibility confirmed via the GitHub API on 2026-10-23).
 7. Render free web services cannot receive private network traffic. Blueprint
    uses public HTTPS MCP with a server-only bearer secret and private PostgreSQL.
 8. Windows Python default text encoding failed while updating documentation.
@@ -48,6 +49,10 @@ were not exercised. Hosted build/runtime observations will be added only when se
 | Verify MCP SDK compatibility | Inspect official package peers, import v2 classes, run separate-process initialization/list/call | One matching official client/server transport pair | Split packages required aligned v2 imports; negotiated 2025-11-25 | Moderate onboarding | Pin compatible packages and executable transport test | Publish locked minimal Node client/server example with negotiated-version assertion |
 | Deploy free Render MCP | Deploy separate web/MCP services and call after idle | Prompt end-to-end request | First call returned 503 during wake; health then passed and retry succeeded | Moderate demo friction | Explain wake delay; wait and refresh; no fabricated success | Surface free networking/wake constraints alongside Blueprint plan selection |
 | Prepare Devpost draft | Sign in, choose Start project | Open project editor | CAPTCHA required human completion | Low; expected security interaction | User completed challenge | Preserve entered draft progress across challenge handoff |
+| Render rollout of a new MCP tool (Time Machine) | Push commit; web and MCP auto-deploy separately | Both services switch together | Web served new UI first; preflight calls returned 503 until MCP rolled over | Moderate, transient | No fallback by design; poll an absent-ID endpoint (503 old vs 404 new) before verifying | Show per-service rollout state or allow grouped Blueprint deploys |
+| Free-tier cold load of the web UI | Open page while MCP sleeps | Visible error state everywhere | Notice showed unavailable but incident badge stayed "Loading" | Moderate UX bug in our app | Fixed: incident panel shows "Unavailable" and no guessed incident | n/a (our defect, caught live, test added) |
+| Browser layout test after reload | Measure table position after page.reload() | Page starts at top | Browser restored earlier scroll; viewport-relative check passed falsely | Moderate test-validity risk | Reset scroll, assert scrollY 0, measure document coordinates | Note scroll restoration in Playwright layout-testing guidance |
+| GitHub push from a multi-account machine | git push with default credential | Push as repository owner | 403: active gh account lacked push permission | Low | Verify identity/permission via gh api, switch only for the push, restore | Clearer credential-manager account selection per remote |
 
 These are environment/developer-experience observations, not claims of defects in
 Amazon APIs. No Amazon runtime was exercised, so no Amazon-specific failure is invented.

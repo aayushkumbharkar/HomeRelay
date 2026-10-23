@@ -395,3 +395,27 @@ in the card, no overflow at 1440 or 390px; existing 390x844 test unchanged and p
 Regression: unit 20/20; integration 11/11 (MCP 2025-11-25); e2e 2/2; typecheck 0;
 git diff --check 0. Inspected timemachine-recorded.png, timemachine-long-cause.png,
 timemachine-long-cause-mobile.png (cropped: token wraps inside the box).
+
+## Final release — 2026-10-23
+
+Pre-push: outgoing diff (0fb12e3 + c6ed032) inspected file by file; secret patterns
+scanned in the outgoing diff and the full tracked tree (none). GitHub identity verified
+via `gh api user` as aayushkumbharkar with push=true before pushing 65edf53..c6ed032;
+active account restored to aayush835 afterwards. Repository visibility: public.
+
+Render: new stylesheet served and get_preflight_run answered 404 (absent ID) at the
+first poll after the push. Live real-browser verification (temporary script, Edge):
+- stored incident equals the persisted decision 112af6a7-8a01-436e-9cd7-9d1a4bd17cd0
+  (GET /api/incidents vs /api/decisions), root cause OUTSIDE_WEEKDAYS shown;
+- six cases: weekday ALLOW/ALLOW, Saturday DENY OUTSIDE_WEEKDAYS -> ALLOW, before
+  sunset, missing sunset, unapproved, unlock DENY on both sides; PASS 1 of 6 changed,
+  0 violations, 5 invariants held; last row 934px;
+- unlock-bypass candidate: FAIL PROHIBITED_ACTION_REQUESTED, 5 unlock verdicts all
+  DENY DOOR_UNLOCK_FORBIDDEN, 0 violation rows;
+- devices and history unchanged; 390px single column, no overflow; 0 JS errors.
+
+Demo video: recorded from the live deployment with Playwright (1440x810 -> 1920x1080,
+H.264/AAC), synthesized English narration. ffprobe duration 153.67s (2:34). First
+attempt rejected after frame review (page rendered top-left with padding). Upload,
+public URL and anonymous playback: NOT YET DONE (requires the account holder).
+Devpost submission: NOT YET DONE.
