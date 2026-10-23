@@ -545,3 +545,17 @@ Hosted checks on https://homerelay-opal.vercel.app (Edge browser, real network):
   20/20; test:integration 13/13 (MCP 2025-11-25 from listener and packaged function);
   test:e2e 7/7 (comparison rows 934 px; 967 px with long root cause); typecheck 0;
   git diff --check 0.
+- Release: pushed ceab69b..2759989 to codex/m1-vertical-slice as aayushkumbharkar
+  (push=true verified; active account restored). Vercel production redeployed from
+  local HEAD 2759989 (= origin; working tree also held the owner's two uncommitted,
+  unused scripts): deployment dpl_E9GhzwY6f1XdPaVxAARh3uydaf52, READY, aliased to
+  https://homerelay-opal.vercel.app, functions in iad1, plan-default build machine.
+  Vercel records no git SHA for CLI deploys without Git integration.
+- Final production check: all sections loaded in 3.0 s, recorded incident root cause
+  OUTSIDE_WEEKDAYS; labelled preflight run b595eb72-f2db-4093-b9c6-430d80216df3 PASS
+  (1 of 6 changed, 5 invariants held); refresh OK; comparison ends 934 px; 390 px no
+  overflow; 0 JS errors. MCP: 2025-11-25, 9 tools with output schemas, forged input
+  rejected, no token 401, wrong token 401, forged Origin 403.
+- Render fallback after the push redeploy: web /healthz 200, MCP /healthz 200,
+  /api/ready 200 in 1.98 s, new frontend served. Its sleeping-MCP wake-up limitation
+  (above) is unchanged; it remains a rollback only.
