@@ -164,10 +164,9 @@ function showIncident(incident){
   const cause=document.createElement('div');cause.className='cause';
   cause.append(node('span',failed?'VERIFIED ROOT CAUSE · stored reason code':'NO FAILED CHECK · every rule passed'),node('strong',failed?failed.check+' — failed':'Arrival rule matched'),node('code',a.reasonCode),node('p',failed?failed.evidence:`Receipt ${a.actionId}`));
   const list=document.createElement('ol');list.className='checks';
-  for(const c of a.checks){const li=document.createElement('li');li.className=c.status;li.append(node('b',c.status==='passed'?'✓':c.status==='failed'?'✕':'·'),node('span',c.check),node('small',c.status==='not_reached'?'not reached':c.evidence));list.append(li);}
-  parts.push(cause,list,node('p',`${a.deviceId}/${a.action}: ${a.executionStatus==='executed'?'executed · receipt '+a.actionId:'not executed · no receipt'}`));
+  for(const c of a.checks){const detail=c.status==='not_reached'?'not reached':c.evidence;const li=document.createElement('li');li.className=c.status;li.title=detail;li.append(node('b',c.status==='passed'?'✓':c.status==='failed'?'✕':'·'),node('span',c.check),node('small',' — '+detail));list.append(li);}
+  parts.push(cause,list,node('p',`${a.deviceId}/${a.action}: ${a.executionStatus==='executed'?'executed · receipt '+a.actionId:'not executed · no receipt'} · decision ${d.decisionId.slice(0,8)} · revision ${d.routineRevisionId} (${d.currentRevision?'current':'superseded'} when evaluated) · ${d.approvalSnapshot?'approved by '+d.approvalSnapshot.actor:'no approval recorded'} · ${d.policyVersion}`));
  }
- parts.push(node('p',`Decision ${d.decisionId.slice(0,8)} · revision ${d.routineRevisionId} (${d.currentRevision?'current':'superseded'} when evaluated) · ${d.approvalSnapshot?'approved by '+d.approvalSnapshot.actor:'no approval recorded'} · ${d.policyVersion}`));
  $('incident').replaceChildren(...parts);
 }
 $('add-unlock').addEventListener('change',()=>candidateView());

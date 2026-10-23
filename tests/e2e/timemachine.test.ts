@@ -72,6 +72,15 @@ test('browser Time Machine: labelled fixture, real preflight, unlock bypass bloc
  await page.reload();
  await expect(page.locator('#incident-basis')).toHaveText('Recorded · PostgreSQL');
  await expect(page.locator('#incident .cause')).toContainText('OUTSIDE_WEEKDAYS');
+ await page.getByRole('button',{name:'Run preflight suite',exact:true}).click();
+ await expect(page.locator('#preflight-summary')).toContainText('PASS');
+ await page.evaluate(()=>scrollTo(0,0));
+ await page.screenshot({path:'test-results/timemachine-recorded.png'});
+ // Document coordinates: reload restores the earlier scroll position, so viewport boxes would mislead.
+ const lastRowBottom=await page.locator('#cases tr').last().evaluate(row=>row.getBoundingClientRect().bottom+scrollY);
+ const layout=await page.evaluate(()=>['.incident','.candidate','.invariants','.suite'].map(s=>`${s}:${Math.round(document.querySelector(s)!.getBoundingClientRect().height)}`).join(' '));
+ assert.ok(lastRowBottom<=1000,`all six comparison rows in first viewport with a recorded incident (last row ends at ${Math.round(lastRowBottom)}px; ${layout})`);
+ await expect(page.locator('#incident .checks li.failed')).toContainText('Local weekday is in the schedule');
  await page.screenshot({path:'test-results/timemachine-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

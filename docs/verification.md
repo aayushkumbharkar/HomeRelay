@@ -351,3 +351,20 @@ Render CLI/API access in this session); the evidence below is external behaviour
 Observed limitation: with a recorded incident the incident card is taller, so at
 1440x1000 only about three result rows are above the fold (all six with the fixture).
 Not run live: restart recovery of a saved run (tested locally only), MCP outage.
+
+## First-viewport fix — 2026-10-23
+
+Live check showed only ~3 of 6 comparison rows above the fold once a recorded
+incident is displayed. TDD: browser assertion added for the recorded state. A first
+version wrongly passed because reload restored scroll position (viewport-relative
+box); it was corrected to document coordinates. Intended red: last row ended at
+1131px (cards 353px, suite 443px). Fix: check trace rendered as compact chips (per-check
+evidence kept for screen readers and hover; failed evidence remains in the root
+cause box), receipt/decision lines merged, weekday toggles on one row, tighter suite
+header. An intermediate step overrode the mobile single-column grid; the existing
+390px overflow assertion caught it, fixed by scoping to min-width 1101px.
+Green: last row within 1000px. Inspected test-results/timemachine-recorded.png and
+timemachine-mobile.png.
+
+Regression after fix (executed): unit 20/20; integration 11/11; e2e 2/2;
+typecheck exit 0; git diff --check exit 0.
