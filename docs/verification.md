@@ -376,3 +376,22 @@ held, last comparison row ends at 998px (within first viewport), no overflow at
 390px, device state unchanged, 0 JS errors. API smoke not re-run, to avoid adding
 another simulated event to the shared household; run_preflight was exercised live
 through the browser path.
+
+## Final layout fit and cold-load state — 2026-10-23
+
+Intended reds (executed): recorded-incident assertion tightened to <=945px failed at
+998px; new outage assertion failed because a cold page load during an MCP outage left
+the incident badge at "Loading" indefinitely (observed live during a free-tier wake).
+The viewport test resets scroll, asserts scrollY=0 and measures document coordinates,
+so a reload-restored scroll position cannot pass it falsely.
+
+Minimal fix (no text size reduced): one-line intro copy, reason code inline in the
+root-cause box, table cell padding 5->4px, two section gaps -4/-2px; on a failed
+load the incident panel reads "Unavailable" and shows no incident rather than a guess.
+
+Green (executed): recorded incident last row 934px; long root-cause text (test-only
+browser substitution of the evidence string, incl. a 64-char token) 967px, contained
+in the card, no overflow at 1440 or 390px; existing 390x844 test unchanged and passing.
+Regression: unit 20/20; integration 11/11 (MCP 2025-11-25); e2e 2/2; typecheck 0;
+git diff --check 0. Inspected timemachine-recorded.png, timemachine-long-cause.png,
+timemachine-long-cause-mobile.png (cropped: token wraps inside the box).

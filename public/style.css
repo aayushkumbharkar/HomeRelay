@@ -39,3 +39,5 @@ main{padding-top:20px}.intro{margin-bottom:14px}.intro h1{font-size:36px;margin-
 @media(min-width:1101px){.bench{grid-template-columns:1.15fr 1.15fr .8fr}#day-picker{flex-wrap:nowrap}}#day-picker{gap:4px}#day-picker label{gap:3px;padding:3px 4px}
 .suite{padding-top:14px}.suite h2{margin:6px 0 2px}.table-wrap{margin-top:8px}
 .intro p:last-child{max-width:980px}.checks{gap:3px 4px}.checks li{padding:1px 6px;font-size:10.5px}
+/* Final fit: one-line intro, inline reason code, 1px tighter table cells and section gaps. Text sizes unchanged. */
+.intro p:last-child{max-width:none}.cause strong{display:inline;margin-right:6px}#notice{margin-bottom:12px}.suite{margin-top:14px}#comparison td{padding:4px 10px}

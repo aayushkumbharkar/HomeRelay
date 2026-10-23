@@ -74,16 +74,44 @@ test('browser Time Machine: labelled fixture, real preflight, unlock bypass bloc
  await expect(page.locator('#incident .cause')).toContainText('OUTSIDE_WEEKDAYS');
  await page.getByRole('button',{name:'Run preflight suite',exact:true}).click();
  await expect(page.locator('#preflight-summary')).toContainText('PASS');
- await page.evaluate(()=>scrollTo(0,0));
+ // Reload restores the earlier scroll position: reset it, confirm it is 0, and measure in document coordinates.
+ const fromTop=async()=>{
+  await page.evaluate(()=>scrollTo(0,0));
+  assert.equal(await page.evaluate(()=>scrollY),0);
+  const bottom=await page.locator('#cases tr').last().evaluate(row=>row.getBoundingClientRect().bottom+scrollY);
+  const layout=await page.evaluate(()=>['.intro','.incident','.suite'].map(s=>`${s}:${Math.round(document.querySelector(s)!.getBoundingClientRect().height)}`).join(' '));
+  t.diagnostic(`last comparison row ends at ${Math.round(bottom)}px (${layout})`);
+  return { bottom, layout };
+ };
+ const recorded=await fromTop();
  await page.screenshot({path:'test-results/timemachine-recorded.png'});
- // Document coordinates: reload restores the earlier scroll position, so viewport boxes would mislead.
- const lastRowBottom=await page.locator('#cases tr').last().evaluate(row=>row.getBoundingClientRect().bottom+scrollY);
- const layout=await page.evaluate(()=>['.incident','.candidate','.invariants','.suite'].map(s=>`${s}:${Math.round(document.querySelector(s)!.getBoundingClientRect().height)}`).join(' '));
- assert.ok(lastRowBottom<=1000,`all six comparison rows in first viewport with a recorded incident (last row ends at ${Math.round(lastRowBottom)}px; ${layout})`);
+ assert.ok(recorded.bottom<=945,`six comparison rows end near 940px with a recorded incident (got ${Math.round(recorded.bottom)}px; ${recorded.layout})`);
  await expect(page.locator('#incident .checks li.failed')).toContainText('Local weekday is in the schedule');
  await page.screenshot({path:'test-results/timemachine-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.screenshot({path:'test-results/timemachine-mobile.png',fullPage:true});
+
+ // Rendering stress only: the browser receives a longer root-cause evidence string than the server produces.
+ const longEvidence='Event on Saturday 24 October 2026 at 19:00 in Asia/Kolkata; the recorded schedule allows only Monday, Tuesday, Wednesday, Thursday and Friday; content hash '+'f'.repeat(64);
+ await page.route('**/api/incidents/**',async route=>{
+  const response=await route.fetch();const incident=await response.json();
+  for(const check of incident.actions[0].checks) if(check.status==='failed') check.evidence=longEvidence;
+  await route.fulfill({response,json:incident});
+ });
+ await page.setViewportSize({width:1440,height:1000});
+ await page.reload();
+ await expect(page.locator('#incident .cause')).toContainText('content hash');
+ await page.getByRole('button',{name:'Run preflight suite',exact:true}).click();
+ await expect(page.locator('#preflight-summary')).toContainText('PASS');
+ const long=await fromTop();
+ assert.ok(long.bottom<=1000,`comparison stays in first viewport with long root-cause text (got ${Math.round(long.bottom)}px; ${long.layout})`);
+ const contained=await page.evaluate(()=>{const card=document.querySelector('.incident')!.getBoundingClientRect(),cause=document.querySelector('#incident .cause')!.getBoundingClientRect();return cause.right<=card.right&&document.documentElement.scrollWidth<=innerWidth;});
+ assert.equal(contained,true,'long root-cause text wraps inside the incident card');
+ await page.screenshot({path:'test-results/timemachine-long-cause.png'});
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'long root-cause text does not overflow at 390px');
+ await page.screenshot({path:'test-results/timemachine-long-cause-mobile.png',fullPage:true});
+ await page.unroute('**/api/incidents/**');
  assert.deepEqual(errors,[]);
 });

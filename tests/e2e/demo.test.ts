@@ -59,10 +59,16 @@ test('browser approval, execution, denial, replay, refresh, mobile and MCP outag
  await expect(page.locator('#notice')).toContainText('unavailable');
  await expect(page.getByRole('button',{name:'Run arrival scenario',exact:true})).toBeDisabled();
  await page.screenshot({path:'test-results/outage.png',fullPage:true});
+ // A cold load during an outage must not leave the incident panel claiming it is still loading.
+ await page.reload();
+ await expect(page.locator('#notice')).toContainText('unavailable');
+ await expect(page.locator('#incident-basis')).toHaveText('Unavailable');
+ await expect(page.locator('#incident')).toContainText('No incident is shown');
  mcp=await startProcess('dist/src/mcp-server.js',{DATABASE_URL:db.url,MCP_TOKEN:token,MCP_PORT:String(mcp.port)});
  await page.getByRole('button',{name:'Refresh evidence',exact:true}).click();
  await expect(page.getByRole('button',{name:'Run arrival scenario',exact:true})).toBeEnabled();
  await expect(page.locator('#connection')).toContainText('MCP connected');
+ await expect(page.locator('#incident-basis')).toHaveText('Scenario fixture · not recorded');
  assert.equal((await db.pool.query('SELECT * FROM actions')).rowCount,1);
  assert.deepEqual(errors,[]);
 });

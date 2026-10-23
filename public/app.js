@@ -86,7 +86,8 @@ async function refresh() {
 }
 async function work(action) {
  if(busy)return;busy=true;controls();notice('Working through MCP. Waiting for a confirmed result…');
- try{await action();}catch(error){available=false;$('connection').textContent='○ Connection needs attention';notice(error.message==='UNAVAILABLE'?'Service unavailable or waking from sleep. Wait about a minute, then Refresh evidence. Displayed state may be stale; no success is assumed.':`Request failed (${error.message}). Refresh evidence before retrying.`,true);}finally{busy=false;controls();}
+ try{await action();}catch(error){available=false;$('connection').textContent='○ Connection needs attention';
+  if($('incident-basis').textContent==='Loading'){$('incident-basis').textContent='Unavailable';$('incident-heading').textContent='Incident evidence unavailable';$('incident').replaceChildren(node('p','MCP could not be reached. No incident is shown rather than a guess. Select Refresh evidence once the service is awake.'));}notice(error.message==='UNAVAILABLE'?'Service unavailable or waking from sleep. Wait about a minute, then Refresh evidence. Displayed state may be stale; no success is assumed.':`Request failed (${error.message}). Refresh evidence before retrying.`,true);}finally{busy=false;controls();}
 }
 function eventFor(revision) {return {eventId:crypto.randomUUID(),routineRevisionId:revision,kind:'arrival',occurredAt:'2026-10-21T19:00:00+05:30',source:'simulated'};}
 $('approve').addEventListener('click',()=>work(async()=>{await api('/api/approve',{routineRevisionId:draft.routine.revisionId,contentHash:draft.contentHash});await refresh();notice('Approved. Your routine is ready; no device action has run.');}));
