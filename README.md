@@ -283,7 +283,7 @@ No AWS mini-challenge eligibility and no Amazon API feedback are claimed.
 
 - [Verification ledger](docs/verification.md): every executed command and result
 - [Acceptance tests](docs/acceptance-tests.md) and [architecture](docs/architecture.md)
-- [Demo script, as recorded](docs/demo-script.md)
+- [Demo script for the Vercel recording](docs/demo-script-vercel.md); [earlier Render recording](docs/demo-script.md) (historical)
 - [Product feedback and friction log](docs/product-feedback.md)
 - [Submission draft](docs/submission.md)
 

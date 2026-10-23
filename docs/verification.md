@@ -559,3 +559,18 @@ Hosted checks on https://homerelay-opal.vercel.app (Edge browser, real network):
 - Render fallback after the push redeploy: web /healthz 200, MCP /healthz 200,
   /api/ready 200 in 1.98 s, new frontend served. Its sleeping-MCP wake-up limitation
   (above) is unchanged; it remains a rollback only.
+
+## Vercel demo recording and submission docs — 2026-10-23
+
+docs/submission.md replaced with the prepared Vercel + Neon draft; docs/demo-script-vercel.md
+added; docs/demo-script.md kept and labelled as the historical Render recording.
+New recording made against https://homerelay-opal.vercel.app with the existing recorder
+(dist/record-timemachine.mjs, single argument: base URL; reads narration.json and voice
+files from .local/release-tm). Earlier Render artefacts were moved, unchanged, to
+.local/release-tm/render-2026-10-23/. Narration synthesized verbatim from
+demo-script-vercel.md (Windows speech, voice Zira, rate 1). Recorder: 160.1 s capture,
+all seven scenes completed, 0 JS errors; writes were saved preflight runs only.
+Output homerelay-time-machine-demo-vercel.mp4: ffprobe 155.7 s (2:36), 1920x1080 H.264 +
+AAC; contact-sheet frames reviewed (incident root cause, PASS 1 of 6 changed, unlock
+bypass FAIL with every unlock denied, saved run retrieved). Local file only: YouTube
+upload, public URL and signed-out playback are NOT DONE (owner action).

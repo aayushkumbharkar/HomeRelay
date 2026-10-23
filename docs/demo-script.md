@@ -1,5 +1,8 @@
 # HomeRelay Time Machine demo (as recorded, 2:34)
 
+> **Historical.** This documents the earlier video recorded on the Render deployment. It is
+> superseded by the Vercel recording script, [demo-script-vercel.md](demo-script-vercel.md).
+
 Recorded 2026-10-23 from the live deployment https://homerelay-web.onrender.com with a
 Playwright-driven Edge browser (1440x810, upscaled to 1920x1080) and a synthesized
 English narration (Windows speech, voice Zira). The only writes during recording were
