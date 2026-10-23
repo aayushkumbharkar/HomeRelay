@@ -316,4 +316,38 @@ preflight runs are public and unthrottled in the shared demo; the UI's "device s
 unchanged" is an observation of before/after reads in a shared household, while the
 authoritative no-side-effect proof is the integration test's table comparison.
 
-Deployment: NOT RUN at time of writing; see the next entry.
+Deployment: see the next entry.
+
+## Time Machine deployment — 2026-10-23
+
+Commit 9a5c8e0 pushed to codex/m1-vertical-slice (Render auto-deploy). The push used
+the repository owner's gh account; the machine's default credential was refused (403).
+No Render configuration change. Render dashboard/deploy logs were not inspected (no
+Render CLI/API access in this session); the evidence below is external behaviour.
+
+- Web served the new page at 03:36 IST. MCP rollover was observed later: a poll of
+  GET /api/preflight/<absent uuid> returned 503 (old MCP lacks the tool; no
+  fallback) through 10:15:54, then 404 NOT_FOUND from the new MCP by ~10:17. The
+  machine slept during the poll, so the exact rollover time is unknown.
+- The new MCP refuses to start below schema v2, so serving reconstruct_incident and
+  get_preflight_run implies migration 002 was applied to the live database.
+- `SMOKE_URL=https://homerelay-web.onrender.com node scripts/hosted-smoke.mjs preflight`
+  (first attempt 503 during rollover, recorded above; rerun) PASS: run
+  12558a02-e364-43d9-ae37-08dde54a63a5 changed only saturday-after-sunset, 0
+  violations; unlock candidate failed PROHIBITED_ACTION_REQUESTED with all unlocks
+  denied; /api/home and /api/history identical before/after; saved run retrieved
+  identically; forged `approved` field rejected with 400.
+  It also recorded one simulated Saturday arrival in the shared household (event
+  baefd4a0-2a2a-4402-bd15-792a20c79d09): stored OUTSIDE_WEEKDAYS, no receipt; its
+  reconstruction equals the stored decision. This is the live page's incident.
+- Live real-browser check (temporary script, Edge, 1440x1000): new headline, incident
+  "Recorded · PostgreSQL" with verified root cause OUTSIDE_WEEKDAYS, Run preflight
+  suite -> PASS, 1 of 6 changed, 5 invariants held, device state unchanged, 0 JS
+  errors (run 4953c67f-6f40-400c-bf8f-e4469fbb92a4). Screenshot:
+  test-results/hosted/timemachine-live.png (local artifact).
+- `hosted-smoke.mjs flow` PASS after release: approval, real-MCP execution, unlock
+  denial, original-receipt replay and persisted retrieval still work live.
+
+Observed limitation: with a recorded incident the incident card is taller, so at
+1440x1000 only about three result rows are above the fold (all six with the fixture).
+Not run live: restart recovery of a saved run (tested locally only), MCP outage.
