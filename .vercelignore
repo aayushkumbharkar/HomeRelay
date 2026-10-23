@@ -1,0 +1,11 @@
+# Never upload secrets, local artefacts or build output to Vercel.
+.env
+.env.*
+!.env.example
+.local/
+.agents/
+test-results/
+dist/
+.vercel/
+node_modules/
+*.log

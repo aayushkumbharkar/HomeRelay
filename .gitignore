@@ -6,3 +6,4 @@ dist/
 .local/
 test-results/
 *.log
+.vercel/

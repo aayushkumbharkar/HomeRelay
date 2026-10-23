@@ -6,8 +6,10 @@ export const household = 'demo-home';
 export const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function openDb(url: string) {
   if (!url) throw new Error('DATABASE_URL is required');
-  return new pg.Pool({ connectionString: url, connectionTimeoutMillis: 2000,
-    statement_timeout: 5000, lock_timeout: 5000, max: 12 });
+  // Serverless hosts set a small pool and a longer connect window (Neon scales to zero).
+  return new pg.Pool({ connectionString: url, connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 2000),
+    statement_timeout: 5000, lock_timeout: 5000, max: Number(process.env.PG_POOL_MAX ?? 12),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? 10000) });
 }
 export async function transaction<T>(pool: pg.Pool, work: (db: pg.PoolClient) => Promise<T>) {
   const db = await pool.connect();

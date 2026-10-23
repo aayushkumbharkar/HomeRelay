@@ -15,7 +15,8 @@
     "db:seed": "npm run build && node --env-file=.env dist/scripts/seed.js",
     "test:e2e": "npm run build && node --test dist/tests/e2e/*.test.js",
     "start:production:web": "node dist/src/web.js",
-    "start:production:mcp": "node dist/scripts/migrate.js && node dist/scripts/seed.js && node dist/src/mcp-server.js"
+    "start:production:mcp": "node dist/scripts/migrate.js && node dist/scripts/seed.js && node dist/src/mcp-server.js",
+    "build:vercel": "npm run build && node scripts/build-vercel.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -30,5 +31,8 @@
     "@types/pg": "8.23.1",
     "node": "24.22.0",
     "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
