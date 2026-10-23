@@ -368,3 +368,11 @@ timemachine-mobile.png.
 
 Regression after fix (executed): unit 20/20; integration 11/11; e2e 2/2;
 typecheck exit 0; git diff --check exit 0.
+
+Live after pushing 65edf53 (new stylesheet observed on homerelay-web): temporary
+real-browser check (Edge, 1440x1000) PASS: incident "Recorded · PostgreSQL" (Sat 24
+Oct arrival, no action), Run preflight suite -> PASS 1 of 6 changed, 5 invariants
+held, last comparison row ends at 998px (within first viewport), no overflow at
+390px, device state unchanged, 0 JS errors. API smoke not re-run, to avoid adding
+another simulated event to the shared household; run_preflight was exercised live
+through the browser path.
