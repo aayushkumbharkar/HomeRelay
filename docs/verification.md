@@ -453,3 +453,18 @@ configuration message. Existing demo outage step updated to assert the new wakin
 and fast-forward the bounded retries (all prior assertions kept).
 Green: unit 20/20; integration 12/12 (MCP 2025-11-25); e2e 7/7; typecheck 0;
 git diff --check 0.
+
+Live after push c6ed032..ceab69b (identity verified aayushkumbharkar, push=true):
+new app.js served and GET /api/ready 200 at 13:11:49 IST. README on GitHub verified
+byte-identical to HEAD at ceab69b063f225ff5f0c7f63f03a42516980c4ce.
+- Warm browser run (Edge, 1440x1000): request order session -> one /api/ready ->
+  routine/home/history in parallel -> incident; all sections settled in 5.3s, none
+  stuck; three rapid Refresh clicks produced one readiness request; labelled preflight
+  run 9bc67211-ac25-4eea-a6e6-4c2993accc4f PASS (1 of 6 changed, 0 violations; writes
+  one test-run record); no overflow at 390px; 0 JS errors.
+- "Idle" run after 17 minutes (13:29): settled in 4.9s, first readiness probe
+  succeeded, refresh x3 -> one readiness request, 0 JS errors. This did NOT exercise a
+  cold start: saved decisions rose from 29 to 32 during the window (other visitors),
+  so the services stayed awake. Live wake-up recovery is therefore NOT verified; it is
+  verified locally (e2e: MCP stopped on first load, then started; recovery without
+  reload) and by the bounded-retry e2e test.
